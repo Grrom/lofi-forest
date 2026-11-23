@@ -1,0 +1,10 @@
+services:
+  lobby:
+    build:
+      context: ../..
+      dockerfile: apps/public-server/Dockerfile
+    restart: unless-stopped
+    mem_limit: 256m
+    env_file: .env
+    ports:
+      - "${LOBBY_BIND:-127.0.0.1}:8080:8080"
