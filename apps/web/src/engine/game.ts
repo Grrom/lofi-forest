@@ -3,9 +3,15 @@ import { setupPixi } from './pixiSetup';
 import { assetLoader } from './assets/AssetLoader';
 import { createWorldLayers, type WorldLayers } from './layers';
 import { Camera } from './camera';
-import { parseTiledMap, renderTiledMap, type ParsedTiledMap, type TiledMapRenderer } from './tiled';
+import {
+  parseTiledMap,
+  renderTiledMap,
+  type ParsedTiledMap,
+  type TiledMapRenderer,
+} from './tiled';
 import { Atmosphere } from './atmosphere';
 import { gameEvents } from './events';
+import { LocalPlayer } from '../entities/LocalPlayer';
 import type { AssetManifest, ZoneId } from '@lofi/shared';
 
 export class GameEngine {
@@ -16,29 +22,34 @@ export class GameEngine {
   public parsedMap!: ParsedTiledMap;
   public mapRenderer!: TiledMapRenderer;
   public atmosphere!: Atmosphere;
+  public player!: LocalPlayer;
   public isDebug = false;
 
   private currentZone: ZoneId = 'forest';
   private keysPressed = new Set<string>();
   private lastTickMs = Date.now();
   private updateIntervalId: any = null;
+  private unsubZoneChanged?: () => void;
 
   public async init(canvasContainer?: HTMLElement): Promise<Application> {
     // 1. Ensure nearest neighbor scaleMode
     setupPixi();
 
     // 2. Load manifest
-    const manifest: AssetManifest | null = await assetLoader.loadManifest().catch((err) => {
-      console.warn('Initial manifest load failed, using fallbacks:', err);
-      return null;
-    });
+    const manifest: AssetManifest | null = await assetLoader
+      .loadManifest()
+      .catch((err) => {
+        console.warn('Initial manifest load failed, using fallbacks:', err);
+        return null;
+      });
 
     // 3. Initialize Pixi Application:
     // antialias:false, roundPixels:true, resolution: Math.min(devicePixelRatio||1, 2), resizes with window
     this.app = new Application();
-    const resolution = typeof window !== 'undefined'
-      ? Math.min(window.devicePixelRatio || 1, 2)
-      : 1;
+    const resolution =
+      typeof window !== 'undefined'
+        ? Math.min(window.devicePixelRatio || 1, 2)
+        : 1;
 
     await this.app.init({
       antialias: false,
@@ -87,14 +98,17 @@ export class GameEngine {
     }
 
     this.parsedMap = parseTiledMap(mapJson);
-    this.mapRenderer = renderTiledMap(this.parsedMap, this.layers, assetLoader);
+    this.mapRenderer = renderTiledMap(
+      this.parsedMap,
+      this.layers,
+      assetLoader
+    );
 
     // 6. Camera setup
     this.camera = new Camera();
     const initW = typeof window !== 'undefined' ? window.innerWidth : 800;
     const initH = typeof window !== 'undefined' ? window.innerHeight : 600;
     this.camera.updateViewport(initW, initH);
-    this.camera.lookAt(this.parsedMap.spawn.x, this.parsedMap.spawn.y);
 
     // 7. Atmosphere setup
     this.atmosphere = new Atmosphere(
@@ -102,7 +116,50 @@ export class GameEngine {
       this.parsedMap.campfires
     );
 
-    // 8. Debug mode setup (?debug=1)
+    // 8. LocalPlayer setup (camera follows player)
+    this.player = new LocalPlayer(
+      this.parsedMap,
+      this.camera,
+      this.layers
+    );
+    this.currentZone = this.player.zone;
+    this.atmosphere.setZone(this.player.zone);
+
+    this.unsubZoneChanged = gameEvents.on('zoneChanged', ({ zone }) => {
+      this.currentZone = zone;
+      this.atmosphere.setZone(zone);
+    });
+
+    // Tap / Click-to-walk on canvas
+    this.app.canvas.addEventListener('pointerdown', (e: PointerEvent) => {
+      if (this.isDebug) return;
+      if (Date.now() - this.player.lastPromptInteractTime < 200) return;
+
+      const rect = this.app.canvas.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const worldX = screenX / this.camera.zoom + this.camera.roundedX;
+      const worldY = screenY / this.camera.zoom + this.camera.roundedY;
+
+      // If near a seat and tapped directly on the seat/prompt, sit on it
+      const seat = this.player.getNearestSeat(24);
+      if (
+        seat &&
+        this.player.action !== 'sit' &&
+        Math.hypot(worldX - seat.x, worldY - seat.y) <= 24
+      ) {
+        this.player.sitNearestSeat();
+        return;
+      }
+
+      const tw = this.parsedMap.tileWidth || 16;
+      const th = this.parsedMap.tileHeight || 16;
+      const tileX = Math.floor(worldX / tw);
+      const tileY = Math.floor(worldY / th);
+      this.player.walkToTile(tileX, tileY);
+    });
+
+    // 9. Debug mode setup (?debug=1)
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       this.isDebug = params.get('debug') === '1';
@@ -129,7 +186,7 @@ export class GameEngine {
       });
     }
 
-    // 9. Start main loop with wall-clock time
+    // 10. Start main loop with wall-clock time
     this.lastTickMs = Date.now();
     this.app.ticker.add(() => {
       this.tick();
@@ -143,7 +200,22 @@ export class GameEngine {
     const dt = Math.min(0.1, (now - this.lastTickMs) / 1000);
     this.lastTickMs = now;
 
-    // Free-pan debug camera (arrow keys) behind ?debug=1
+    // Sync camera viewport size
+    if (typeof window !== 'undefined') {
+      if (
+        this.camera.viewportW !== window.innerWidth ||
+        this.camera.viewportH !== window.innerHeight
+      ) {
+        this.camera.updateViewport(window.innerWidth, window.innerHeight);
+      }
+    }
+
+    // Update player (simulation, collision, zones, doors, seats, camera follow)
+    if (this.player) {
+      this.player.update(dt);
+    }
+
+    // Free-pan debug camera (arrow keys) behind ?debug=1 overrides camera
     if (this.isDebug && this.keysPressed.size > 0) {
       const PAN_SPEED = 240; // px/s
       if (this.keysPressed.has('ArrowLeft')) {
@@ -159,40 +231,6 @@ export class GameEngine {
         this.camera.y += PAN_SPEED * dt;
       }
       this.camera.clamp();
-    }
-
-    // Sync camera viewport size
-    if (typeof window !== 'undefined') {
-      if (
-        this.camera.viewportW !== window.innerWidth ||
-        this.camera.viewportH !== window.innerHeight
-      ) {
-        this.camera.updateViewport(window.innerWidth, window.innerHeight);
-      }
-    }
-
-    // Determine current zone under camera focus center
-    const viewW = this.camera.viewportW / this.camera.zoom;
-    const viewH = this.camera.viewportH / this.camera.zoom;
-    const centerX = this.camera.roundedX + viewW / 2;
-    const centerY = this.camera.roundedY + viewH / 2;
-
-    if (this.parsedMap?.zoneTriggers) {
-      for (const trigger of this.parsedMap.zoneTriggers) {
-        if (
-          centerX >= trigger.x &&
-          centerX <= trigger.x + trigger.width &&
-          centerY >= trigger.y &&
-          centerY <= trigger.y + trigger.height
-        ) {
-          if (this.currentZone !== trigger.zone) {
-            this.currentZone = trigger.zone;
-            this.atmosphere.setZone(trigger.zone);
-            gameEvents.emit('zoneChanged', { zone: trigger.zone });
-          }
-          break;
-        }
-      }
     }
 
     // Camera transform applied to worldContainer
@@ -212,10 +250,15 @@ export class GameEngine {
   }
 
   public destroy(): void {
+    if (this.unsubZoneChanged) {
+      this.unsubZoneChanged();
+      this.unsubZoneChanged = undefined;
+    }
     if (this.updateIntervalId) {
       clearInterval(this.updateIntervalId);
       this.updateIntervalId = null;
     }
+    this.player?.destroy();
     this.app?.destroy(true, { children: true, texture: false });
   }
 }
