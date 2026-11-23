@@ -3,9 +3,9 @@ import type { EmoteId, PomoBadge, ZoneId } from '@lofi/shared';
 export interface GameEventPayloads {
   zoneChanged: { zone: ZoneId };
   teleported: { x: number; y: number };
-  pomoPhaseChanged: { phase: PomoBadge | string; endsAtMs: number };
+  pomoPhaseChanged: { phase: PomoBadge; endsAtMs: number };
   localEmote: { emote: EmoteId };
-  localInput: Record<string, unknown> | void;
+  localInput: Record<string, never>;
 }
 
 export type GameEventName = keyof GameEventPayloads;
@@ -55,14 +55,14 @@ export class GameEvents {
    */
   public emit<K extends GameEventName>(
     event: K,
-    payload?: GameEventPayloads[K]
+    payload: GameEventPayloads[K]
   ): void {
     const set = this.handlers.get(event);
     if (set) {
       // Snapshot the handlers to avoid issues if a listener unsubscribes during emit
       const snapshot = Array.from(set);
       for (const handler of snapshot) {
-        handler(payload as GameEventPayloads[K]);
+        handler(payload);
       }
     }
   }

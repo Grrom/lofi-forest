@@ -6,7 +6,7 @@ import { Camera } from './camera';
 import { parseTiledMap, renderTiledMap, type ParsedTiledMap, type TiledMapRenderer } from './tiled';
 import { Atmosphere } from './atmosphere';
 import { gameEvents } from './events';
-import type { ZoneId } from '@lofi/shared';
+import type { AssetManifest, ZoneId } from '@lofi/shared';
 
 export class GameEngine {
   public app!: Application;
@@ -28,7 +28,7 @@ export class GameEngine {
     setupPixi();
 
     // 2. Load manifest
-    const manifest = await assetLoader.loadManifest().catch((err) => {
+    const manifest: AssetManifest | null = await assetLoader.loadManifest().catch((err) => {
       console.warn('Initial manifest load failed, using fallbacks:', err);
       return null;
     });
@@ -63,14 +63,21 @@ export class GameEngine {
 
     // 5. Load and parse starter map
     let mapJson: any = null;
-    const mapSrc = (manifest as any)?.maps?.starter?.src || '/assets/maps/starter.tmj';
-    try {
-      const res = await fetch(mapSrc);
-      if (res.ok) {
-        mapJson = await res.json();
+    const mapSrc = manifest?.maps?.starter?.src;
+    if (mapSrc) {
+      try {
+        const res = await fetch(mapSrc);
+        if (res.ok) {
+          mapJson = await res.json();
+        }
+      } catch (err) {
+        console.warn(`Failed to fetch map from "${mapSrc}":`, err);
       }
-    } catch (err) {
-      console.warn(`Failed to fetch map from "${mapSrc}":`, err);
+    } else {
+      assetLoader.warnOnce(
+        'map:starter',
+        '[GameEngine] Missing maps.starter.src in manifest; falling back to procedural starter map.'
+      );
     }
 
     if (!mapJson) {

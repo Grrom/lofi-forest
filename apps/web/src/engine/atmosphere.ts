@@ -43,7 +43,8 @@ export class Atmosphere {
   private vignetteGraphics: Graphics;
 
   // Rain particles pool
-  private rainParticles: RainParticle[] = [];
+  public rainParticles: RainParticle[] = [];
+  public lastUpdateMs: number | null = null;
   private readonly MAX_RAIN_PARTICLES = 120;
 
   constructor(atmosphereLayer: Container, campfires: ParsedCampfire[] = []) {
@@ -185,7 +186,36 @@ export class Atmosphere {
     );
   }
 
+  public stepRain(
+    dtSec: number,
+    camX: number,
+    camY: number,
+    viewW: number,
+    viewH: number
+  ): void {
+    if (dtSec <= 0) return;
+    for (const p of this.rainParticles) {
+      p.y += p.speed * dtSec;
+      p.x -= 40 * dtSec; // Slight wind slant
+
+      // Wrap around camera view
+      if (p.y > camY + viewH) {
+        p.y = camY - p.length;
+        p.x = camX + Math.random() * viewW;
+      }
+      if (p.x < camX) {
+        p.x = camX + viewW;
+      }
+    }
+  }
+
   public update(camera: Camera, nowMs = Date.now()): void {
+    const dt =
+      this.lastUpdateMs === null
+        ? 0
+        : Math.max(0, Math.min(1.0, (nowMs - this.lastUpdateMs) / 1000));
+    this.lastUpdateMs = nowMs;
+
     // 1. Update Campfire glow flicker and pulse
     const { scale, alpha } = this.getCampfireGlowBoost(nowMs);
     for (const glow of this.campfireGlows) {
@@ -235,20 +265,9 @@ export class Atmosphere {
     this.rainGraphics.clear();
 
     if (raining) {
-      const dt = 1 / 60; // Standard nominal delta for particle integration
+      this.stepRain(dt, camX, camY, viewW, viewH);
+
       for (const p of this.rainParticles) {
-        p.y += p.speed * dt;
-        p.x -= 40 * dt; // Slight wind slant
-
-        // Wrap around camera view
-        if (p.y > camY + viewH) {
-          p.y = camY - p.length;
-          p.x = camX + Math.random() * viewW;
-        }
-        if (p.x < camX) {
-          p.x = camX + viewW;
-        }
-
         // Draw raindrop streak
         this.rainGraphics
           .moveTo(p.x, p.y)

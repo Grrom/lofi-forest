@@ -1,13 +1,12 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { generateStarterMap } from '../src/engine/starterMapData.ts';
+import { generateStarterMap, serializeStarterMap } from '../src/engine/starterMapData.ts';
 
-export { generateStarterMap };
+export { generateStarterMap, serializeStarterMap };
 
 export function writeStarterMap(outputPath?: string): string {
-  const map = generateStarterMap();
-  const json = JSON.stringify(map, null, 2) + '\n';
+  const json = serializeStarterMap();
   const targetPath =
     outputPath ||
     resolve(

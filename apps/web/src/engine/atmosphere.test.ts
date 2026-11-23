@@ -73,4 +73,61 @@ describe('Atmosphere', () => {
     const fadeOutEnd = atmosphere.getVignetteAlpha(startTime + 1800);
     expect(fadeOutEnd).toBe(0.0);
   });
+
+  it('rain particles move proportionally to wall-clock dt', () => {
+    const layer = new Container();
+    const atmosphere = new Atmosphere(layer);
+    atmosphere.setWeather('rain');
+
+    const cam = new Camera();
+    cam.updateViewport(800, 600);
+    cam.lookAt(400, 300);
+
+    // Pick first particle and place it safely within viewport so it won't wrap
+    const p = atmosphere.rainParticles[0];
+    p.x = 200;
+    p.y = 50;
+
+    const initialY = p.y;
+    const speed = p.speed;
+
+    // First call at t=0 initializes lastUpdateMs
+    atmosphere.update(cam, 0);
+    expect(p.y).toBe(initialY);
+
+    // Call update at t=500 -> elapsed 500 ms -> dt = 0.5 s -> deltaY = speed * 0.5
+    atmosphere.update(cam, 500);
+    const movedY = p.y - initialY;
+    expect(movedY).toBeCloseTo(speed * 0.5, 1);
+
+    // Check that two updates covering the same wall-clock span move a particle the same distance as one update
+    const layerA = new Container();
+    const atmosphereA = new Atmosphere(layerA);
+    atmosphereA.setWeather('rain');
+    const pA = atmosphereA.rainParticles[0];
+    pA.x = 200;
+    pA.y = 50;
+    pA.speed = 300;
+
+    // One update covering 500 ms (t=0 -> t=500)
+    atmosphereA.update(cam, 0);
+    atmosphereA.update(cam, 500);
+    const distanceOneUpdate = pA.y - 50;
+
+    const layerB = new Container();
+    const atmosphereB = new Atmosphere(layerB);
+    atmosphereB.setWeather('rain');
+    const pB = atmosphereB.rainParticles[0];
+    pB.x = 200;
+    pB.y = 50;
+    pB.speed = 300;
+
+    // Two updates covering the same 500 ms span (t=0 -> t=200 -> t=500)
+    atmosphereB.update(cam, 0);
+    atmosphereB.update(cam, 200);
+    atmosphereB.update(cam, 500);
+    const distanceTwoUpdates = pB.y - 50;
+
+    expect(distanceTwoUpdates).toBeCloseTo(distanceOneUpdate, 5);
+  });
 });

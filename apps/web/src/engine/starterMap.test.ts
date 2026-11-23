@@ -4,9 +4,11 @@ import { resolve } from 'node:path';
 import {
   MAP_WIDTH_TILES,
   MAP_HEIGHT_TILES,
+  PLAYER_SPEED_PX_S,
+  TILE_SIZE,
 } from '@lofi/shared';
 import { parseTiledMap, bfsReachableLandmarks } from './tiled';
-import { generateStarterMap } from './starterMapData';
+import { serializeStarterMap } from './starterMapData';
 
 describe('Starter Map (starter.tmj)', () => {
   const mapPath = resolve(__dirname, '../../public/assets/maps/starter.tmj');
@@ -82,11 +84,60 @@ describe('Starter Map (starter.tmj)', () => {
     expect(reachedWithDoors.has('cozy_pub')).toBe(true);
   });
 
+  // Outdoor end-to-end walking is 20-30 s at PLAYER_SPEED_PX_S
+  it('outdoor end-to-end walking from lakeside_dock to pub exterior door is 20-30 s at PLAYER_SPEED_PX_S', () => {
+    const dockLandmark = parsed.landmarks.find((l) => l.id === 'lakeside_dock')!;
+    const pubExteriorDoor = parsed.doors.find((d) => d.doorId === 'pub_exterior')!;
+
+    const startX = dockLandmark.tileX;
+    const startY = dockLandmark.tileY;
+    const targetX = pubExteriorDoor.tileX;
+    const targetY = pubExteriorDoor.tileY;
+
+    // BFS shortest path on parsed.collision
+    const queue: Array<{ x: number; y: number; dist: number }> = [
+      { x: startX, y: startY, dist: 0 },
+    ];
+    const visited = new Set<number>();
+    visited.add(startY * parsed.width + startX);
+
+    let shortestDistanceTiles: number | null = null;
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (current.x === targetX && current.y === targetY) {
+        shortestDistanceTiles = current.dist;
+        break;
+      }
+
+      const neighbors = [
+        { x: current.x + 1, y: current.y },
+        { x: current.x - 1, y: current.y },
+        { x: current.x, y: current.y + 1 },
+        { x: current.x, y: current.y - 1 },
+      ];
+
+      for (const n of neighbors) {
+        if (n.x >= 0 && n.x < parsed.width && n.y >= 0 && n.y < parsed.height) {
+          const idx = n.y * parsed.width + n.x;
+          if (!visited.has(idx) && parsed.collision[idx] === 0) {
+            visited.add(idx);
+            queue.push({ x: n.x, y: n.y, dist: current.dist + 1 });
+          }
+        }
+      }
+    }
+
+    expect(shortestDistanceTiles).not.toBeNull();
+    const walkingTimeSec = (shortestDistanceTiles! * TILE_SIZE) / PLAYER_SPEED_PX_S;
+    expect(walkingTimeSec).toBeGreaterThanOrEqual(20);
+    expect(walkingTimeSec).toBeLessThanOrEqual(30);
+  });
+
   // Acceptance criterion:
   // Test: running the generator reproduces the committed starter.tmj byte for byte.
   it('running the generator reproduces the committed starter.tmj byte for byte', () => {
-    const freshGenerated = generateStarterMap();
-    const freshJson = JSON.stringify(freshGenerated, null, 2) + '\n';
+    const freshJson = serializeStarterMap();
     const committedContent = readFileSync(mapPath, 'utf-8');
 
     expect(freshJson).toBe(committedContent);

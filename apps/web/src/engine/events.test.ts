@@ -63,4 +63,13 @@ describe('GameEvents', () => {
   it('exports singleton gameEvents instance', () => {
     expect(gameEvents).toBeInstanceOf(GameEvents);
   });
+
+  it('enforces typed payloads at compile time', () => {
+    const events = new GameEvents();
+    // @ts-expect-error missing payload
+    events.emit('teleported');
+
+    // @ts-expect-error wrong payload
+    events.emit('zoneChanged', { zone: 'moon' });
+  });
 });

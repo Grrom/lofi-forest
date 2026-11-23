@@ -59,39 +59,47 @@ export function generateStarterMap(): TiledMapJson {
     }
   }
 
-  // 2. Lakeside Dock (West area: x 0..36)
-  // Water body: x 2..24, y 18..46
-  for (let y = 18; y <= 46; y++) {
-    for (let x = 2; x <= 24; x++) {
+  // 2. Lakeside Dock (West area: x 0..28)
+  // Water body: x 2..22, y 16..48
+  for (let y = 16; y <= 48; y++) {
+    for (let x = 2; x <= 22; x++) {
       setTile(groundData, x, y, GID.WATER_0);
       setTile(collisionData, x, y, 1); // Water is solid
     }
   }
 
-  // Pier extending over water: from shore (x=25) out into lake to x=12, y=31..32
-  for (let x = 12; x <= 25; x++) {
+  // Pier extending over water: from shore (x=23) out into lake to x=3, y=31..32
+  for (let x = 3; x <= 23; x++) {
     for (let y = 31; y <= 32; y++) {
       setTile(groundData, x, y, GID.PIER_PLANKS);
       setTile(collisionData, x, y, 0); // Pier is walkable over water
     }
   }
 
-  // Bench at end of pier (x=14, y=31)
-  setTile(entitiesData, 14, 31, GID.BENCH);
-  setTile(collisionData, 14, 31, 0); // Seat tile is NOT solid
+  // Bench at end of pier (x=4, y=31)
+  setTile(entitiesData, 4, 31, GID.BENCH);
+  setTile(collisionData, 4, 31, 0); // Seat tile is NOT solid
 
   // 3. Dirt Path connecting Dock, Forest Clearing, and Pub Exterior
-  // Path from Pier (x=26) to Clearing (x=56), y=31..32
-  for (let x = 26; x <= 56; x++) {
+  // Path from Pier shore (x=24) to Clearing (x=56), y=31..32
+  for (let x = 24; x <= 56; x++) {
     for (let y = 31; y <= 32; y++) {
       setTile(groundData, x, y, GID.DIRT_PATH);
       setTile(collisionData, x, y, 0);
     }
   }
 
-  // Path through Clearing and to Pub Exterior (x=64 to 93), y=31..32
-  for (let x = 64; x <= 93; x++) {
+  // Path through Clearing and eastward to Pub exterior approach (x=64 to 115), y=31..32
+  for (let x = 64; x <= 115; x++) {
     for (let y = 31; y <= 32; y++) {
+      setTile(groundData, x, y, GID.DIRT_PATH);
+      setTile(collisionData, x, y, 0);
+    }
+  }
+
+  // Approach north from y=31 up to Pub exterior entrance at (115, 29)
+  for (let y = 29; y <= 31; y++) {
+    for (let x = 114; x <= 115; x++) {
       setTile(groundData, x, y, GID.DIRT_PATH);
       setTile(collisionData, x, y, 0);
     }
@@ -144,53 +152,38 @@ export function generateStarterMap(): TiledMapJson {
     setTile(collisionData, tx, ty, 1);
   }
 
-  // 5. Cozy Pub (East area)
-  // Pub Exterior Door at (93, 32)
-  setTile(entitiesData, 93, 32, GID.DOOR);
-  setTile(collisionData, 93, 32, 0); // Walkable entrance tile
+  // 5. Cozy Pub (East area, walled-off building)
+  // Pub Exterior Door at (115, 29)
+  setTile(entitiesData, 115, 29, GID.DOOR);
+  setTile(collisionData, 115, 29, 0); // Walkable entrance tile
 
   // Solid enclosure walls completely surrounding the pub interior
-  // Pub interior room spans x: 99..117, y: 21..41
-  // Perimeter walls are at x=98, x=118, y=20, y=42
-  for (let y = 20; y <= 42; y++) {
+  // Pub interior room spans x: 106..124, y: 8..27
+  // Perimeter walls are at x=105, x=125, y=7, y=28
+  for (let y = 7; y <= 28; y++) {
     // West wall
-    setTile(entitiesData, 98, y, GID.WALL);
-    setTile(collisionData, 98, y, 1);
+    setTile(entitiesData, 105, y, GID.WALL);
+    setTile(collisionData, 105, y, 1);
     // East wall
-    setTile(entitiesData, 118, y, GID.WALL);
-    setTile(collisionData, 118, y, 1);
+    setTile(entitiesData, 125, y, GID.WALL);
+    setTile(collisionData, 125, y, 1);
   }
-  for (let x = 98; x <= 118; x++) {
+  for (let x = 105; x <= 125; x++) {
     // North wall
-    setTile(entitiesData, x, 20, GID.WALL);
-    setTile(collisionData, x, 20, 1);
+    setTile(entitiesData, x, 7, GID.WALL);
+    setTile(collisionData, x, 7, 1);
     // South wall
-    setTile(entitiesData, x, 42, GID.WALL);
-    setTile(collisionData, x, 42, 1);
+    setTile(entitiesData, x, 28, GID.WALL);
+    setTile(collisionData, x, 28, 1);
   }
 
-  // Additional barrier around door buffer:
-  // Buffer between exterior door (x=93) and interior door (x=101)
-  // Walls from x=94..98 at y=30 and y=34
-  for (let x = 94; x <= 98; x++) {
-    setTile(entitiesData, x, 30, GID.WALL);
-    setTile(collisionData, x, 30, 1);
-    setTile(entitiesData, x, 34, GID.WALL);
-    setTile(collisionData, x, 34, 1);
-  }
-  // Solid wall between x=94..100 at y=32 except exterior door (93) and interior door (101)
-  for (let x = 94; x <= 100; x++) {
-    setTile(entitiesData, x, 32, GID.WALL);
-    setTile(collisionData, x, 32, 1);
-  }
+  // Interior Pub Door at (115, 27)
+  setTile(entitiesData, 115, 27, GID.DOOR);
+  setTile(collisionData, 115, 27, 0); // Walkable door tile
 
-  // Interior Pub Door at (101, 32)
-  setTile(entitiesData, 101, 32, GID.DOOR);
-  setTile(collisionData, 101, 32, 0); // Walkable door tile
-
-  // Pub interior floor: x 99..117, y 21..41
-  for (let y = 21; y <= 41; y++) {
-    for (let x = 99; x <= 117; x++) {
+  // Pub interior floor: x 106..124, y 8..27
+  for (let y = 8; y <= 27; y++) {
+    for (let x = 106; x <= 124; x++) {
       setTile(groundData, x, y, GID.WOODEN_FLOOR);
       // If not already solid (walls/bars), it's non-solid walkable floor
       if (collisionData[y * width + x] !== 1) {
@@ -199,29 +192,29 @@ export function generateStarterMap(): TiledMapJson {
     }
   }
 
-  // Fireplace (campfire object) at (115, 24)
-  setTile(entitiesData, 115, 24, GID.CAMPFIRE);
-  setTile(collisionData, 115, 24, 1);
+  // Fireplace (campfire object) at (122, 10)
+  setTile(entitiesData, 122, 10, GID.CAMPFIRE);
+  setTile(collisionData, 122, 10, 1);
 
-  // Rug in front of fireplace: x 112..114, y 24..26
-  for (let y = 24; y <= 26; y++) {
-    for (let x = 112; x <= 114; x++) {
+  // Rug in front of fireplace: x 119..121, y 10..12
+  for (let y = 10; y <= 12; y++) {
+    for (let x = 119; x <= 121; x++) {
       setTile(decorData, x, y, GID.RUG);
     }
   }
 
-  // Bar counter at y=36, x 104..112
-  for (let x = 104; x <= 112; x++) {
-    setTile(entitiesData, x, 36, GID.WALL);
-    setTile(collisionData, x, 36, 1);
+  // Bar counter at y=22, x 112..120
+  for (let x = 112; x <= 120; x++) {
+    setTile(entitiesData, x, 22, GID.WALL);
+    setTile(collisionData, x, 22, 1);
   }
 
-  // Bar stools at (105, 35), (107, 35), (109, 35), (111, 35)
+  // Bar stools at (113, 21), (115, 21), (117, 21), (119, 21)
   const stoolPositions = [
-    [105, 35],
-    [107, 35],
-    [109, 35],
-    [111, 35],
+    [113, 21],
+    [115, 21],
+    [117, 21],
+    [119, 21],
   ];
   for (const [sx, sy] of stoolPositions) {
     setTile(entitiesData, sx, sy, GID.STOOL);
@@ -287,7 +280,7 @@ export function generateStarterMap(): TiledMapJson {
       id: 14,
       name: 'seat_dock_bench',
       type: 'seat',
-      x: 14 * TILE_SIZE,
+      x: 4 * TILE_SIZE,
       y: 31 * TILE_SIZE,
       width: TILE_SIZE,
       height: TILE_SIZE,
@@ -297,8 +290,8 @@ export function generateStarterMap(): TiledMapJson {
       id: 15,
       name: 'seat_pub_stool_1',
       type: 'seat',
-      x: 105 * TILE_SIZE,
-      y: 35 * TILE_SIZE,
+      x: 113 * TILE_SIZE,
+      y: 21 * TILE_SIZE,
       width: TILE_SIZE,
       height: TILE_SIZE,
       properties: [{ name: 'seatKind', type: 'string', value: 'stool' }],
@@ -307,8 +300,8 @@ export function generateStarterMap(): TiledMapJson {
       id: 16,
       name: 'seat_pub_stool_2',
       type: 'seat',
-      x: 107 * TILE_SIZE,
-      y: 35 * TILE_SIZE,
+      x: 115 * TILE_SIZE,
+      y: 21 * TILE_SIZE,
       width: TILE_SIZE,
       height: TILE_SIZE,
       properties: [{ name: 'seatKind', type: 'string', value: 'stool' }],
@@ -317,8 +310,8 @@ export function generateStarterMap(): TiledMapJson {
       id: 17,
       name: 'seat_pub_stool_3',
       type: 'seat',
-      x: 109 * TILE_SIZE,
-      y: 35 * TILE_SIZE,
+      x: 117 * TILE_SIZE,
+      y: 21 * TILE_SIZE,
       width: TILE_SIZE,
       height: TILE_SIZE,
       properties: [{ name: 'seatKind', type: 'string', value: 'stool' }],
@@ -327,8 +320,8 @@ export function generateStarterMap(): TiledMapJson {
       id: 18,
       name: 'seat_pub_stool_4',
       type: 'seat',
-      x: 111 * TILE_SIZE,
-      y: 35 * TILE_SIZE,
+      x: 119 * TILE_SIZE,
+      y: 21 * TILE_SIZE,
       width: TILE_SIZE,
       height: TILE_SIZE,
       properties: [{ name: 'seatKind', type: 'string', value: 'stool' }],
@@ -353,7 +346,7 @@ export function generateStarterMap(): TiledMapJson {
       id: 21,
       name: 'landmark_lakeside_dock',
       type: 'landmark',
-      x: 14 * TILE_SIZE,
+      x: 4 * TILE_SIZE,
       y: 32 * TILE_SIZE,
       width: TILE_SIZE,
       height: TILE_SIZE,
@@ -367,8 +360,8 @@ export function generateStarterMap(): TiledMapJson {
       id: 22,
       name: 'landmark_cozy_pub',
       type: 'landmark',
-      x: 108 * TILE_SIZE,
-      y: 30 * TILE_SIZE,
+      x: 115 * TILE_SIZE,
+      y: 17 * TILE_SIZE,
       width: TILE_SIZE,
       height: TILE_SIZE,
       properties: [
@@ -385,7 +378,7 @@ export function generateStarterMap(): TiledMapJson {
       type: 'zone_trigger',
       x: 0,
       y: 0,
-      width: 36 * TILE_SIZE,
+      width: 28 * TILE_SIZE,
       height: 64 * TILE_SIZE,
       properties: [{ name: 'zone', type: 'string', value: 'lake' }],
     },
@@ -393,9 +386,9 @@ export function generateStarterMap(): TiledMapJson {
       id: 31,
       name: 'zone_trigger_forest',
       type: 'zone_trigger',
-      x: 36 * TILE_SIZE,
+      x: 28 * TILE_SIZE,
       y: 0,
-      width: 58 * TILE_SIZE,
+      width: 72 * TILE_SIZE,
       height: 64 * TILE_SIZE,
       properties: [{ name: 'zone', type: 'string', value: 'forest' }],
     },
@@ -403,9 +396,9 @@ export function generateStarterMap(): TiledMapJson {
       id: 32,
       name: 'zone_trigger_pub',
       type: 'zone_trigger',
-      x: 94 * TILE_SIZE,
+      x: 100 * TILE_SIZE,
       y: 0,
-      width: 34 * TILE_SIZE,
+      width: 28 * TILE_SIZE,
       height: 64 * TILE_SIZE,
       properties: [{ name: 'zone', type: 'string', value: 'pub' }],
     },
@@ -424,8 +417,8 @@ export function generateStarterMap(): TiledMapJson {
       id: 41,
       name: 'campfire_pub_fireplace',
       type: 'campfire',
-      x: 115 * TILE_SIZE,
-      y: 24 * TILE_SIZE,
+      x: 122 * TILE_SIZE,
+      y: 10 * TILE_SIZE,
       width: TILE_SIZE,
       height: TILE_SIZE,
     },
@@ -435,8 +428,8 @@ export function generateStarterMap(): TiledMapJson {
       id: 50,
       name: 'door_pub_exterior',
       type: 'door',
-      x: 93 * TILE_SIZE,
-      y: 32 * TILE_SIZE,
+      x: 115 * TILE_SIZE,
+      y: 29 * TILE_SIZE,
       width: TILE_SIZE,
       height: TILE_SIZE,
       properties: [
@@ -448,8 +441,8 @@ export function generateStarterMap(): TiledMapJson {
       id: 51,
       name: 'door_pub_interior',
       type: 'door',
-      x: 101 * TILE_SIZE,
-      y: 32 * TILE_SIZE,
+      x: 115 * TILE_SIZE,
+      y: 27 * TILE_SIZE,
       width: TILE_SIZE,
       height: TILE_SIZE,
       properties: [
@@ -473,7 +466,7 @@ export function generateStarterMap(): TiledMapJson {
       id: 61,
       name: 'camera_focus_lake',
       type: 'camera_focus',
-      x: 18 * TILE_SIZE,
+      x: 8 * TILE_SIZE,
       y: 32 * TILE_SIZE,
       width: TILE_SIZE,
       height: TILE_SIZE,
@@ -483,8 +476,8 @@ export function generateStarterMap(): TiledMapJson {
       id: 62,
       name: 'camera_focus_pub',
       type: 'camera_focus',
-      x: 108 * TILE_SIZE,
-      y: 30 * TILE_SIZE,
+      x: 115 * TILE_SIZE,
+      y: 17 * TILE_SIZE,
       width: TILE_SIZE,
       height: TILE_SIZE,
       properties: [{ name: 'zone', type: 'string', value: 'pub' }],
@@ -589,4 +582,8 @@ export function generateStarterMap(): TiledMapJson {
       },
     ],
   };
+}
+
+export function serializeStarterMap(map: TiledMapJson = generateStarterMap()): string {
+  return JSON.stringify(map, null, 2) + '\n';
 }
