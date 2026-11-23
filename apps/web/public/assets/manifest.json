@@ -1,0 +1,104 @@
+{
+  "sprites": {
+    "tileset_forest": {
+      "src": "/assets/sprites/tileset_forest.png",
+      "author": "TBD",
+      "license": "TBD"
+    },
+    "char_base": {
+      "src": "/assets/sprites/char_base.png",
+      "author": "TBD",
+      "license": "TBD"
+    },
+    "hats": [
+      {
+        "id": "none",
+        "src": "/assets/sprites/hats/none.png",
+        "author": "TBD",
+        "license": "TBD"
+      },
+      {
+        "id": "beanie",
+        "src": "/assets/sprites/hats/beanie.png",
+        "author": "TBD",
+        "license": "TBD"
+      },
+      {
+        "id": "cap",
+        "src": "/assets/sprites/hats/cap.png",
+        "author": "TBD",
+        "license": "TBD"
+      },
+      {
+        "id": "flower",
+        "src": "/assets/sprites/hats/flower.png",
+        "author": "TBD",
+        "license": "TBD"
+      }
+    ],
+    "emotes": {
+      "heart": {
+        "src": "/assets/sprites/emotes/heart.png",
+        "author": "TBD",
+        "license": "TBD"
+      },
+      "coffee": {
+        "src": "/assets/sprites/emotes/coffee.png",
+        "author": "TBD",
+        "license": "TBD"
+      },
+      "music": {
+        "src": "/assets/sprites/emotes/music.png",
+        "author": "TBD",
+        "license": "TBD"
+      },
+      "wave": {
+        "src": "/assets/sprites/emotes/wave.png",
+        "author": "TBD",
+        "license": "TBD"
+      },
+      "zzz": {
+        "src": "/assets/sprites/emotes/zzz.png",
+        "author": "TBD",
+        "license": "TBD"
+      },
+      "sparkle": {
+        "src": "/assets/sprites/emotes/sparkle.png",
+        "author": "TBD",
+        "license": "TBD"
+      }
+    }
+  },
+  "audio": {
+    "bgm": [
+      {
+        "id": "forest_lullaby",
+        "title": "Forest Lullaby",
+        "artist": "TBD",
+        "src": "/assets/audio/bgm/forest_lullaby.ogg"
+      }
+    ],
+    "ambience": {
+      "rain": {
+        "src": "/assets/audio/ambience/rain.ogg"
+      },
+      "campfire": {
+        "src": "/assets/audio/ambience/campfire.ogg"
+      },
+      "forest": {
+        "src": "/assets/audio/ambience/forest.ogg"
+      },
+      "pub": {
+        "src": "/assets/audio/ambience/pub.ogg"
+      }
+    },
+    "sfx": {
+      "pomo_chime": {
+        "src": "/assets/audio/sfx/pomo_chime.ogg"
+      },
+      "teleport": {
+        "src": "/assets/audio/sfx/teleport.ogg"
+      }
+    }
+  }
+}
