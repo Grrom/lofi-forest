@@ -1,0 +1,13 @@
+# Example Caddy configuration for lofi-forest public lobby
+# Proxies public WebSocket and HTTP traffic to the lobby server.
+#
+# Requirements:
+# 1. Cloudflare DNS record pointing to your server IP with Proxy enabled (orange cloud).
+# 2. Cloudflare SSL/TLS encryption mode set to "Full (strict)".
+# 3. Cloudflare Origin Certificate and Private Key installed on the server.
+# 4. Set TRUST_CF_HEADER=1 in apps/public-server/.env when running behind Cloudflare.
+
+ws.example.com {
+    tls /etc/ssl/certs/cloudflare-origin.crt /etc/ssl/private/cloudflare-origin.key
+    reverse_proxy 127.0.0.1:8080
+}

@@ -1,0 +1,50 @@
+# Example Nginx configuration for lofi-forest public lobby
+# Proxies public WebSocket and HTTP traffic to the lobby server.
+#
+# Requirements:
+# 1. Cloudflare DNS record pointing to your server IP with Proxy enabled (orange cloud).
+# 2. Cloudflare SSL/TLS encryption mode set to "Full (strict)".
+# 3. Cloudflare Origin Certificate and Private Key installed on the server.
+# 4. Set TRUST_CF_HEADER=1 in apps/public-server/.env when running behind Cloudflare.
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name ws.example.com;
+
+    # Cloudflare Origin Certificate and Private Key
+    ssl_certificate /etc/ssl/certs/cloudflare-origin.crt;
+    ssl_certificate_key /etc/ssl/private/cloudflare-origin.key;
+
+    # Recommended TLS configurations
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        # WebSocket Upgrade and Connection headers
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        # Standard proxy headers
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Pass Cloudflare IP header
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+
+        # WebSocket timeouts (read timeout must be >= 75s to prevent dropping idle connections)
+        proxy_read_timeout 75s;
+        proxy_send_timeout 75s;
+    }
+}
