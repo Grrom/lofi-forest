@@ -47,6 +47,10 @@ export interface AudioAssetEntry {
   license?: string;
 }
 
+export interface MapAssetEntry {
+  src: string;
+}
+
 export interface AssetManifest {
   sprites: {
     tileset_forest: SpriteAssetEntry;
@@ -66,5 +70,9 @@ export interface AssetManifest {
       pomo_chime: AudioAssetEntry;
       teleport: AudioAssetEntry;
     };
+  };
+  maps?: {
+    starter: MapAssetEntry;
+    [key: string]: MapAssetEntry;
   };
 }
