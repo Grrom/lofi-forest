@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StorageManager, usePrefs, type VolumePrefs } from '../systems/StorageManager';
+import { StorageManager, usePrefs } from '../systems/StorageManager';
 import { audioEngine, AudioEngine, type MixerChannel } from '../audio/AudioEngine';
 
 interface MixerPanelProps {
@@ -32,16 +32,13 @@ export const MixerPanel: React.FC<MixerPanelProps> = ({ engine = audioEngine }) 
   }, [engine]);
 
   const handleSliderChange = (channel: MixerChannel, value: number) => {
-    // 1. Persist in StorageManager
+    // Persist in StorageManager; AudioEngine's subscription applies 50 ms ramp only to changed channel
     StorageManager.update((prev) => ({
       volumes: {
         ...prev.volumes,
         [channel]: value,
       },
     }));
-
-    // 2. Apply via engine with 50 ms ramp
-    engine.setVolume(channel, value);
   };
 
   return (

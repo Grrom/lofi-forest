@@ -29,8 +29,11 @@ let nextChimeId = 1;
 
 export class AudioEngine {
   public ctx: AudioContext | null = null;
+  public chimeBuffer: AudioBuffer | null = null;
   private _unlocked = false;
+  private _started = false;
   private unlockListeners = new Set<() => void>();
+  private lastVolumes: VolumePrefs = { ...StorageManager.get().volumes };
 
   // 5 mixer channels: master, music, rain, campfire, ambience
   public channels!: Record<MixerChannel, GainNode>;
@@ -99,6 +102,19 @@ export class AudioEngine {
     }
   }
 
+  public resetForTest(mockCtx?: AudioContext): void {
+    this.removeGestureListeners();
+    this._unlocked = false;
+    this._started = false;
+    this.chimeBuffer = null;
+    this.ambientSources.clear();
+    this.lastVolumes = { ...StorageManager.get().volumes };
+    if (mockCtx) {
+      this.initGraph(mockCtx);
+    }
+    this.attachGestureListeners();
+  }
+
   private initGraph(ctx: AudioContext): void {
     this.ctx = ctx;
 
@@ -134,6 +150,7 @@ export class AudioEngine {
     rainMixerGain.gain.value = initialVols.rain;
     campfireMixerGain.gain.value = initialVols.campfire;
     ambienceMixerGain.gain.value = initialVols.ambience;
+    this.lastVolumes = { ...initialVols };
 
     // 3. Zone ambient gain nodes
     const forestGain = ctx.createGain();
@@ -171,9 +188,9 @@ export class AudioEngine {
     pubGain.gain.value = initMix.pub;
     rainFilter.frequency.value = initMix.rainFilterCutoff;
 
-    // If context was passed in already running
+    // If context was passed in already running, start audio once
     if (ctx.state === 'running') {
-      this._unlocked = true;
+      this.checkAndStartAudio();
     }
   }
 
@@ -198,6 +215,17 @@ export class AudioEngine {
     }
   }
 
+  private checkAndStartAudio(): void {
+    if (this._started) return;
+    if (this.ctx?.state === 'running') {
+      this._started = true;
+      this._unlocked = true;
+      this.removeGestureListeners();
+      this.notifyUnlock();
+      this.startAmbientAndBgm();
+    }
+  }
+
   private attachGestureListeners(): void {
     if (typeof window === 'undefined' || this.gestureListenersAttached) return;
     this.gestureListenersAttached = true;
@@ -206,11 +234,14 @@ export class AudioEngine {
       this.unlock();
     };
 
-    window.addEventListener('pointerdown', handleGesture, { capture: true });
-    window.addEventListener('keydown', handleGesture, { capture: true });
+    const events = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'];
+    for (const evt of events) {
+      window.addEventListener(evt, handleGesture, { capture: true });
+    }
     (this as any)._removeGestures = () => {
-      window.removeEventListener('pointerdown', handleGesture, { capture: true });
-      window.removeEventListener('keydown', handleGesture, { capture: true });
+      for (const evt of events) {
+        window.removeEventListener(evt, handleGesture, { capture: true });
+      }
       this.gestureListenersAttached = false;
     };
   }
@@ -223,21 +254,21 @@ export class AudioEngine {
   }
 
   public async unlock(): Promise<boolean> {
-    if (this.isUnlocked()) return true;
+    if (this._started && this.isUnlocked()) return true;
 
     try {
       const ctx = this.getContext();
       if (ctx && ctx.state === 'suspended' && ctx.resume) {
         await ctx.resume();
       }
-      this._unlocked = true;
-      this.removeGestureListeners();
-      this.notifyUnlock();
-      this.startAmbientAndBgm();
-      return true;
+      if (this.ctx?.state === 'running') {
+        this.checkAndStartAudio();
+        return true;
+      }
     } catch {
       return false;
     }
+    return false;
   }
 
   /**
@@ -250,10 +281,7 @@ export class AudioEngine {
         await ctx.resume();
       }
       if (this.ctx?.state === 'running') {
-        this._unlocked = true;
-        this.removeGestureListeners();
-        this.notifyUnlock();
-        this.startAmbientAndBgm();
+        this.checkAndStartAudio();
         return true;
       }
     } catch {
@@ -278,6 +306,7 @@ export class AudioEngine {
 
   public setVolume(channel: MixerChannel, value: number): void {
     const clamped = Math.max(0, Math.min(1, value));
+    this.lastVolumes[channel] = clamped;
     if (!this.ctx || !this.channels) return;
     const gainNode = this.channels[channel];
     if (gainNode) {
@@ -299,7 +328,9 @@ export class AudioEngine {
   private applyVolumePrefs(volumes: VolumePrefs): void {
     const keys: MixerChannel[] = ['master', 'music', 'rain', 'campfire', 'ambience'];
     for (const key of keys) {
-      this.setVolume(key, volumes[key]);
+      if (volumes[key] !== this.lastVolumes[key]) {
+        this.setVolume(key, volumes[key]);
+      }
     }
   }
 
@@ -363,6 +394,12 @@ export class AudioEngine {
   public async startAmbience(): Promise<void> {
     const ctx = this.getContext();
     if (!ctx) return;
+
+    let manifest = this.customAssetLoader.getManifest();
+    if (!manifest) {
+      manifest = await this.customAssetLoader.loadManifest().catch(() => null);
+    }
+
     const channels: AmbientChannel[] = ['rain', 'campfire', 'forest', 'pub'];
 
     for (const ch of channels) {
@@ -403,6 +440,25 @@ export class AudioEngine {
 
   public isRainNoiseSource(): boolean {
     return this.isRainNoise;
+  }
+
+  /**
+   * Preloads the Pomodoro chime buffer so scheduleChime can stay synchronous.
+   */
+  public async preloadChime(): Promise<void> {
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    let manifest = this.customAssetLoader.getManifest();
+    if (!manifest) {
+      manifest = await this.customAssetLoader.loadManifest().catch(() => null);
+    }
+
+    try {
+      this.chimeBuffer = await this.customAssetLoader.loadAudioBuffer(ctx, 'pomo_chime');
+    } catch {
+      this.chimeBuffer = null;
+    }
   }
 
   /**
@@ -450,16 +506,21 @@ export class AudioEngine {
     }
 
     if (this.bgmQueue.length === 0) return;
-    this.playNextBgm(0);
+    await this.playNextBgm(0);
   }
 
-  private async playNextBgm(index: number): Promise<void> {
+  private async playNextBgm(index: number, skipCount = 0): Promise<void> {
     const ctx = this.getContext();
     if (!ctx || this.bgmQueue.length === 0) return;
 
-    this.currentBgmIndex = index % this.bgmQueue.length;
-    const track = this.bgmQueue[this.currentBgmIndex];
-    this.notifyTrackChange();
+    if (skipCount >= this.bgmQueue.length) {
+      this.currentBgmIndex = -1;
+      this.notifyTrackChange();
+      return;
+    }
+
+    const targetIndex = index % this.bgmQueue.length;
+    const track = this.bgmQueue[targetIndex];
 
     let buffer: AudioBuffer | null = null;
     try {
@@ -469,9 +530,12 @@ export class AudioEngine {
     }
 
     if (!buffer) {
-      // Missing BGM stays silent
-      return;
+      // Missing BGM stays silent: skip to next track and continue queue
+      return this.playNextBgm(index + 1, skipCount + 1);
     }
+
+    this.currentBgmIndex = targetIndex;
+    this.notifyTrackChange();
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
@@ -523,11 +587,13 @@ export class AudioEngine {
   private startAmbientAndBgm(): void {
     this.startAmbience().catch((err) => console.warn('Ambience start error:', err));
     this.startBgm().catch((err) => console.warn('BGM start error:', err));
+    this.preloadChime().catch((err) => console.warn('Chime preload error:', err));
   }
 
   /**
    * Scheduled chime:
    * computes when = ctx.currentTime + max(0, (atMs - Date.now())/1000), so it plays even in hidden tabs.
+   * Uses preloaded chimeBuffer when available, falling back to gentle synth wind-chime.
    */
   public scheduleChime(atMs: number): ChimeHandle {
     const ctx = this.getContext();
@@ -543,15 +609,14 @@ export class AudioEngine {
     let sourceNode: AudioBufferSourceNode | null = null;
     let synthHandle: SynthHandle | null = null;
 
-    if (typeof ctx.createOscillator === 'function') {
+    if (this.chimeBuffer) {
+      sourceNode = ctx.createBufferSource();
+      sourceNode.buffer = this.chimeBuffer;
+      sourceNode.connect(this.channels?.master ?? ctx.destination);
+      sourceNode.start(when);
+    } else {
       // Synth fallback: gentle sine/triangle wind-chime
       synthHandle = synthesizeWindChime(ctx, this.channels?.master ?? ctx.destination, when);
-    } else if (typeof ctx.createBufferSource === 'function') {
-      sourceNode = ctx.createBufferSource();
-      sourceNode.connect(this.channels?.master ?? ctx.destination);
-      if (sourceNode.start) {
-        sourceNode.start(when);
-      }
     }
 
     const handle: ChimeHandle = {
@@ -560,14 +625,14 @@ export class AudioEngine {
       stop: () => {
         if (stopped) return;
         stopped = true;
-        if (synthHandle) {
-          synthHandle.stop();
-        }
         if (sourceNode) {
           try {
-            if (sourceNode.stop) sourceNode.stop();
-            if (sourceNode.disconnect) sourceNode.disconnect();
+            sourceNode.stop();
+            sourceNode.disconnect();
           } catch {}
+        }
+        if (synthHandle) {
+          synthHandle.stop();
         }
         this.activeChimes.delete(id);
       },
@@ -594,10 +659,14 @@ export class AudioEngine {
     if (!ctx) return;
 
     let buffer: AudioBuffer | null = null;
-    try {
-      buffer = await this.customAssetLoader.loadAudioBuffer(ctx, name);
-    } catch {
-      buffer = null;
+    if (name === 'pomo_chime' && this.chimeBuffer) {
+      buffer = this.chimeBuffer;
+    } else {
+      try {
+        buffer = await this.customAssetLoader.loadAudioBuffer(ctx, name);
+      } catch {
+        buffer = null;
+      }
     }
 
     const dest = this.channels?.master ?? ctx.destination;
@@ -641,6 +710,9 @@ export class AudioEngine {
         this.currentBgmSource.disconnect();
       } catch {}
     }
+
+    this.chimeBuffer = null;
+    this._started = false;
   }
 }
 

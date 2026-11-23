@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import App from './App';
 import { StorageManager } from './systems/StorageManager';
 import { audioEngine } from './audio/AudioEngine';
+import { createMockAudioContext } from './audio/mockAudioContext';
 
 describe('apps/web HUD and Audio UI', () => {
   beforeEach(() => {
     StorageManager.reset();
-    (audioEngine as any)._unlocked = false;
+    const mockCtx = createMockAudioContext(0);
+    audioEngine.resetForTest(mockCtx);
   });
 
   afterEach(() => {
@@ -38,12 +40,6 @@ describe('apps/web HUD and Audio UI', () => {
   // Acceptance criterion:
   // Test: the pill is visible before unlock and hidden after the first gesture.
   it('the pill is visible before unlock and hidden after the first gesture', async () => {
-    // Before gesture: audio is locked
-    (audioEngine as any)._unlocked = false;
-    if (audioEngine.ctx) {
-      vi.spyOn(audioEngine.ctx, 'resume').mockResolvedValue(undefined as any);
-    }
-
     render(<App />);
 
     // Pill should be visible before unlock
@@ -51,10 +47,38 @@ describe('apps/web HUD and Audio UI', () => {
     expect(pill).toBeDefined();
     expect(pill).not.toBeNull();
 
-    // Trigger gesture (click on pill or pointer down on window)
+    // Trigger gesture (pointerdown on window)
+    fireEvent.pointerDown(window);
+
+    // Pill should now be hidden after gesture unlocks audio
+    await waitFor(() => {
+      expect(screen.queryByText('Click to enable sound')).toBeNull();
+    });
+  });
+
+  it('clicking the pill unlocks audio as well', async () => {
+    render(<App />);
+
+    const pill = screen.getByText('Click to enable sound');
+    expect(pill).toBeDefined();
+
     fireEvent.click(pill);
 
-    // Pill should now be hidden
-    expect(screen.queryByText('Click to enable sound')).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByText('Click to enable sound')).toBeNull();
+    });
+  });
+
+  it('keydown gesture on window unlocks audio and hides pill', async () => {
+    render(<App />);
+
+    const pill = screen.getByText('Click to enable sound');
+    expect(pill).toBeDefined();
+
+    fireEvent.keyDown(window, { key: ' ' });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Click to enable sound')).toBeNull();
+    });
   });
 });

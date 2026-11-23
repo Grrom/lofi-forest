@@ -2,91 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AudioEngine } from './AudioEngine';
 import { gameEvents } from '../engine/events';
 import { AssetLoader } from '../engine/assets/AssetLoader';
-
-export function createMockAudioContext(initialCurrentTime = 0) {
-  let currentTime = initialCurrentTime;
-
-  const mockDestination = {
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-  };
-
-  const createGain = vi.fn(() => ({
-    gain: {
-      value: 1,
-      setValueAtTime: vi.fn(),
-      linearRampToValueAtTime: vi.fn(),
-      exponentialRampToValueAtTime: vi.fn(),
-      cancelScheduledValues: vi.fn(),
-    },
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-  }));
-
-  const createBiquadFilter = vi.fn(() => ({
-    type: 'lowpass',
-    frequency: {
-      value: 20000,
-      setValueAtTime: vi.fn(),
-      linearRampToValueAtTime: vi.fn(),
-      cancelScheduledValues: vi.fn(),
-    },
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-  }));
-
-  const createBufferSource = vi.fn(() => ({
-    buffer: null as any,
-    loop: false,
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-    start: vi.fn(),
-    stop: vi.fn(),
-  }));
-
-  const createOscillator = vi.fn(() => ({
-    type: 'sine',
-    frequency: {
-      setValueAtTime: vi.fn(),
-    },
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-    start: vi.fn(),
-    stop: vi.fn(),
-  }));
-
-  const createBuffer = vi.fn((channels: number, length: number, sampleRate: number) => {
-    const data = new Float32Array(length);
-    return {
-      numberOfChannels: channels,
-      length,
-      sampleRate,
-      duration: length / sampleRate,
-      getChannelData: vi.fn(() => data),
-    };
-  });
-
-  return {
-    get currentTime() {
-      return currentTime;
-    },
-    set currentTime(t: number) {
-      currentTime = t;
-    },
-    state: 'suspended' as AudioContextState,
-    sampleRate: 44100,
-    destination: mockDestination,
-    resume: vi.fn().mockImplementation(async function (this: any) {
-      this.state = 'running';
-    }),
-    createGain,
-    createBiquadFilter,
-    createBufferSource,
-    createOscillator,
-    createBuffer,
-    decodeAudioData: vi.fn(),
-  } as unknown as AudioContext;
-}
+import { createMockAudioContext } from './mockAudioContext';
 
 describe('AudioEngine', () => {
   let engine: AudioEngine;
@@ -114,25 +30,82 @@ describe('AudioEngine', () => {
     const handleFuture = engine.scheduleChime(61000);
     expect(handleFuture.when).toBe(70);
 
-    // Verify first oscillator/node was scheduled to start at when = 70
-    const firstOsc = mockCtx.createOscillator.mock.results[0]?.value;
-    const firstBufSrc = mockCtx.createBufferSource.mock.results[0]?.value;
-    const startedNode = firstOsc?.start.mock.calls.length ? firstOsc : firstBufSrc;
-    expect(startedNode.start).toHaveBeenCalledWith(70);
+    // With synth fallback: 4 oscillators created for handleFuture
+    const futureOscs = mockCtx.createOscillator.mock.results.slice(0, 4).map((r: any) => r.value);
+    expect(futureOscs.length).toBe(4);
+    for (const osc of futureOscs) {
+      expect(osc.start).toHaveBeenCalled();
+      expect(osc.start.mock.calls[0][0]).toBeGreaterThanOrEqual(70);
+    }
 
     // 2. Past chime at 500 ms (less than Date.now() = 1000): when = currentTime = 10
-    const oscCountBefore = mockCtx.createOscillator.mock.calls.length;
     const handlePast = engine.scheduleChime(500);
     expect(handlePast.when).toBe(10);
 
-    const pastOsc = mockCtx.createOscillator.mock.results[oscCountBefore]?.value;
-    const pastBufSrc = mockCtx.createBufferSource.mock.results.at(-1)?.value;
-    const pastStartedNode = pastOsc?.start.mock.calls.length ? pastOsc : pastBufSrc;
-    expect(pastStartedNode.start).toHaveBeenCalledWith(10);
+    const pastOscs = mockCtx.createOscillator.mock.results.slice(4, 8).map((r: any) => r.value);
+    expect(pastOscs.length).toBe(4);
+    for (const osc of pastOscs) {
+      expect(osc.start).toHaveBeenCalled();
+      expect(osc.start.mock.calls[0][0]).toBeGreaterThanOrEqual(10);
+      expect(osc.start.mock.calls[0][0]).toBeLessThan(70);
+    }
 
-    // 3. cancelChime stops it
+    // 3. cancelChime stops future chime oscillators immediately and leaves past chime unaffected
+    const futureStopsBefore = futureOscs.map((osc: any) => osc.stop.mock.calls.length);
+    const pastStopsBefore = pastOscs.map((osc: any) => osc.stop.mock.calls.length);
+
     engine.cancelChime(handleFuture);
-    expect(startedNode.stop).toHaveBeenCalled();
+
+    // Check every oscillator of that chime was stopped immediately with no arguments
+    for (let i = 0; i < futureOscs.length; i++) {
+      const osc = futureOscs[i];
+      expect(osc.stop.mock.calls.length).toBeGreaterThan(futureStopsBefore[i]);
+      expect(osc.stop.mock.calls.at(-1)).toEqual([]);
+    }
+
+    // Check past chime oscillators were NOT stopped by cancelling the future one
+    for (let i = 0; i < pastOscs.length; i++) {
+      const osc = pastOscs[i];
+      expect(osc.stop.mock.calls.length).toBe(pastStopsBefore[i]);
+    }
+
+    dateSpy.mockRestore();
+  });
+
+  it('scheduleChime uses non-null chime buffer and starts buffer source at when', () => {
+    mockCtx.currentTime = 10;
+    const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
+
+    const mockBuffer = { duration: 2 } as AudioBuffer;
+    engine.chimeBuffer = mockBuffer;
+
+    const handle = engine.scheduleChime(15000); // (15000 - 1000) / 1000 = 14s -> when = 24
+    expect(handle.when).toBe(24);
+
+    const bufferSources = mockCtx.createBufferSource.mock.results.map((r: any) => r.value);
+    const chimeSource = bufferSources.at(-1);
+    expect(chimeSource).toBeDefined();
+    expect(chimeSource.buffer).toBe(mockBuffer);
+    expect(chimeSource.start).toHaveBeenCalledWith(24);
+
+    const stopsBefore = chimeSource.stop.mock.calls.length;
+    engine.cancelChime(handle);
+    expect(chimeSource.stop.mock.calls.length).toBeGreaterThan(stopsBefore);
+    expect(chimeSource.stop.mock.calls.at(-1)).toEqual([]);
+
+    dateSpy.mockRestore();
+  });
+
+  it('scheduleChime falls back to synth wind-chime when chime buffer is null', () => {
+    mockCtx.currentTime = 10;
+    const dateSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
+
+    engine.chimeBuffer = null;
+    const oscCountBefore = mockCtx.createOscillator.mock.calls.length;
+
+    const handle = engine.scheduleChime(15000);
+    expect(handle.when).toBe(24);
+    expect(mockCtx.createOscillator.mock.calls.length).toBe(oscCountBefore + 4);
 
     dateSpy.mockRestore();
   });
@@ -219,5 +192,40 @@ describe('AudioEngine', () => {
 
     expect(engine.currentTrack()).toEqual({ title: 'Song 1', artist: 'Artist 1' });
     expect(trackChanges).toContainEqual({ title: 'Song 1', artist: 'Artist 1' });
+  });
+
+  it('BGM skips missing tracks and starts the first present one', async () => {
+    const tracks = [
+      { id: 'missing_track', title: 'Missing Song', artist: 'Nobody' },
+      { id: 'present_track', title: 'Present Song', artist: 'Somebody' },
+    ];
+
+    const mockBuffer = { duration: 60 } as AudioBuffer;
+    vi.spyOn(mockLoader, 'loadAudioBuffer').mockImplementation(async (_ctx, id) => {
+      if (id === 'present_track') return mockBuffer;
+      return null;
+    });
+
+    await engine.startBgm(tracks);
+
+    expect(engine.currentTrack()).toEqual({ title: 'Present Song', artist: 'Somebody' });
+
+    const bufferSources = mockCtx.createBufferSource.mock.results.map((r: any) => r.value);
+    const bgmSource = bufferSources.find((s: any) => s.buffer === mockBuffer);
+    expect(bgmSource).toBeDefined();
+    expect(bgmSource?.start).toHaveBeenCalled();
+  });
+
+  it('BGM handles all missing tracks without throwing or playing', async () => {
+    const tracks = [
+      { id: 'missing_1', title: 'Missing 1', artist: 'Nobody' },
+      { id: 'missing_2', title: 'Missing 2', artist: 'Nobody' },
+    ];
+
+    vi.spyOn(mockLoader, 'loadAudioBuffer').mockResolvedValue(null);
+
+    await engine.startBgm(tracks);
+
+    expect(engine.currentTrack()).toBeNull();
   });
 });
