@@ -1,0 +1,11 @@
+{
+  "name": "lofi-forest",
+  "version": "0.0.1",
+  "private": true,
+  "packageManager": "pnpm@9.15.5",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build"
+  }
+}
