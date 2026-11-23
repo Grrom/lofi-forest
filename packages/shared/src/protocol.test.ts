@@ -123,7 +123,7 @@ describe('Issue #2 Acceptance Criteria', () => {
         pomo: 'none',
       };
 
-      // NaN in JSON serializes to null or isn't standard, but test non-number and JSON null
+      // Non-number types and null
       expect(
         parseClientMessage(JSON.stringify({ ...baseState, x: null, y: 100 }))
       ).toBeNull();
@@ -133,6 +133,23 @@ describe('Issue #2 Acceptance Criteria', () => {
       expect(
         parseClientMessage(JSON.stringify({ ...baseState, x: 100, y: true }))
       ).toBeNull();
+
+      // Valid JSON numbers that parse to Infinity / -Infinity in JavaScript (e.g. 1e999)
+      // Note: JSON.parse('1e999') === Infinity and JSON.parse('-1e999') === -Infinity
+      expect(JSON.parse('1e999')).toBe(Infinity);
+      expect(JSON.parse('-1e999')).toBe(-Infinity);
+      expect(
+        parseClientMessage(
+          '{"t":"state","x":1e999,"y":100,"zone":"forest","facing":"down","action":"idle","pomo":"none"}'
+        )
+      ).toBeNull();
+      expect(
+        parseClientMessage(
+          '{"t":"state","x":100,"y":-1e999,"zone":"forest","facing":"down","action":"idle","pomo":"none"}'
+        )
+      ).toBeNull();
+
+      // Literal NaN and Infinity in JSON strings are invalid JSON syntax and also rejected
       expect(
         parseClientMessage(
           '{"t":"state","x":NaN,"y":100,"zone":"forest","facing":"down","action":"idle","pomo":"none"}'
@@ -266,11 +283,6 @@ describe('Issue #2 Acceptance Criteria', () => {
     expect(clamped.x).toBe(0);
     expect(clamped.y).toBe(WORLD_HEIGHT_PX);
     expect(clamped).toEqual({ x: 0, y: WORLD_HEIGHT_PX });
-
-    // Also verify tuple destructuring
-    const [cx, cy] = clamped;
-    expect(cx).toBe(0);
-    expect(cy).toBe(WORLD_HEIGHT_PX);
   });
 
   // Acceptance criterion:

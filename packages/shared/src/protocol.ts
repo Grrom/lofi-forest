@@ -102,34 +102,16 @@ export function sanitizeName(s: unknown): string {
 export function clampToWorld(
   x: number,
   y: number
-): { x: number; y: number } & [number, number] {
+): { x: number; y: number } {
   const safeX = Number.isFinite(x) ? x : 0;
   const safeY = Number.isFinite(y) ? y : 0;
   const clampedX = Math.max(0, Math.min(safeX, WORLD_WIDTH_PX));
   const clampedY = Math.max(0, Math.min(safeY, WORLD_HEIGHT_PX));
 
-  const result = {
+  return {
     x: clampedX,
     y: clampedY,
-  } as { x: number; y: number } & [number, number];
-
-  Object.defineProperty(result, 0, {
-    enumerable: false,
-    value: clampedX,
-  });
-  Object.defineProperty(result, 1, {
-    enumerable: false,
-    value: clampedY,
-  });
-  Object.defineProperty(result, Symbol.iterator, {
-    enumerable: false,
-    value: function* () {
-      yield clampedX;
-      yield clampedY;
-    },
-  });
-
-  return result;
+  };
 }
 
 /**
