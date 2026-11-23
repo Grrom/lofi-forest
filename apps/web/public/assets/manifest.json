@@ -100,5 +100,10 @@
         "src": "/assets/audio/sfx/teleport.ogg"
       }
     }
+  },
+  "maps": {
+    "starter": {
+      "src": "/assets/maps/starter.tmj"
+    }
   }
 }
