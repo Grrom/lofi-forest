@@ -168,8 +168,7 @@ export class LocalPlayer {
     container.on('pointerdown', (e) => {
       e.stopPropagation();
       this.lastPromptInteractTime = Date.now();
-      this.sitNearestSeat();
-      gameEvents.emit('localInput', {});
+      this.tapSeat();
     });
 
     return container;
@@ -194,12 +193,12 @@ export class LocalPlayer {
   public handleKeyDown(code: string): void {
     if (isInputFocused()) return;
 
-    gameEvents.emit('localInput', {});
-
     // Manual input cancels auto-stroll immediately
     if (this.isAutoStroll) {
       this.setAutoStroll(false);
     }
+
+    gameEvents.emit('localInput', {});
 
     if (code === 'KeyE') {
       if (this.action === 'sit') {
@@ -259,10 +258,10 @@ export class LocalPlayer {
     isManual = true
   ): boolean {
     if (isManual) {
-      gameEvents.emit('localInput', {});
       if (this.isAutoStroll) {
         this.setAutoStroll(false);
       }
+      gameEvents.emit('localInput', {});
     }
 
     if (this.action === 'sit') {
@@ -307,8 +306,17 @@ export class LocalPlayer {
     return true;
   }
 
-  public sitNearestSeat(): boolean {
-    const seat = this.activeSeat || this.getNearestSeat(20);
+  public tapSeat(seat?: ParsedSeat | null): boolean {
+    if (this.isAutoStroll) {
+      this.setAutoStroll(false);
+    }
+    const sat = this.sitNearestSeat(seat);
+    gameEvents.emit('localInput', {});
+    return sat;
+  }
+
+  public sitNearestSeat(targetSeat?: ParsedSeat | null): boolean {
+    const seat = targetSeat || this.activeSeat || this.getNearestSeat(20);
     if (!seat) return false;
 
     // E snaps the player to the seat, action='sit', foot y +2 px

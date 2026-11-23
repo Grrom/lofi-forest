@@ -148,7 +148,7 @@ export class GameEngine {
         this.player.action !== 'sit' &&
         Math.hypot(worldX - seat.x, worldY - seat.y) <= 24
       ) {
-        this.player.sitNearestSeat();
+        this.player.tapSeat(seat);
         return;
       }
 

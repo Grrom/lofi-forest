@@ -47,6 +47,113 @@ interface Node {
   parent?: Node;
 }
 
+class BinaryHeap {
+  private heap: Node[] = [];
+  private nodeIndices: Int32Array;
+
+  constructor(size: number) {
+    this.nodeIndices = new Int32Array(size).fill(-1);
+  }
+
+  get size(): number {
+    return this.heap.length;
+  }
+
+  push(node: Node, mapWidth: number): void {
+    const idx = this.heap.length;
+    this.heap.push(node);
+    this.nodeIndices[node.tileY * mapWidth + node.tileX] = idx;
+    this.bubbleUp(idx, mapWidth);
+  }
+
+  pop(mapWidth: number): Node {
+    const top = this.heap[0];
+    this.nodeIndices[top.tileY * mapWidth + top.tileX] = -1;
+    const bottom = this.heap.pop()!;
+    if (this.heap.length > 0) {
+      this.heap[0] = bottom;
+      this.nodeIndices[bottom.tileY * mapWidth + bottom.tileX] = 0;
+      this.sinkDown(0, mapWidth);
+    }
+    return top;
+  }
+
+  update(node: Node, mapWidth: number): void {
+    const idx = this.nodeIndices[node.tileY * mapWidth + node.tileX];
+    if (idx !== -1) {
+      this.heap[idx] = node;
+      this.bubbleUp(idx, mapWidth);
+    }
+  }
+
+  isOpen(tileX: number, tileY: number, mapWidth: number): boolean {
+    return this.nodeIndices[tileY * mapWidth + tileX] !== -1;
+  }
+
+  private bubbleUp(idx: number, mapWidth: number): void {
+    while (idx > 0) {
+      const parentIdx = (idx - 1) >> 1;
+      const current = this.heap[idx];
+      const parent = this.heap[parentIdx];
+      if (
+        current.f < parent.f ||
+        (current.f === parent.f && current.h < parent.h)
+      ) {
+        this.heap[idx] = parent;
+        this.heap[parentIdx] = current;
+        this.nodeIndices[parent.tileY * mapWidth + parent.tileX] = idx;
+        this.nodeIndices[current.tileY * mapWidth + current.tileX] = parentIdx;
+        idx = parentIdx;
+      } else {
+        break;
+      }
+    }
+  }
+
+  private sinkDown(idx: number, mapWidth: number): void {
+    const length = this.heap.length;
+    while (true) {
+      const left = (idx << 1) + 1;
+      const right = left + 1;
+      let smallest = idx;
+
+      if (left < length) {
+        const leftNode = this.heap[left];
+        const smallestNode = this.heap[smallest];
+        if (
+          leftNode.f < smallestNode.f ||
+          (leftNode.f === smallestNode.f && leftNode.h < smallestNode.h)
+        ) {
+          smallest = left;
+        }
+      }
+
+      if (right < length) {
+        const rightNode = this.heap[right];
+        const smallestNode = this.heap[smallest];
+        if (
+          rightNode.f < smallestNode.f ||
+          (rightNode.f === smallestNode.f && rightNode.h < smallestNode.h)
+        ) {
+          smallest = right;
+        }
+      }
+
+      if (smallest !== idx) {
+        const current = this.heap[idx];
+        const next = this.heap[smallest];
+        this.heap[idx] = next;
+        this.heap[smallest] = current;
+        this.nodeIndices[next.tileY * mapWidth + next.tileX] = idx;
+        this.nodeIndices[current.tileY * mapWidth + current.tileX] = smallest;
+        idx = smallest;
+      } else {
+        break;
+      }
+    }
+  }
+}
+
 /**
  * 8-directional A* pathfinding on a collision grid with strict corner cutting prevention.
  * Returns the sequence of path tiles from start to goal (inclusive), or null if unreachable.
@@ -70,8 +177,8 @@ export function findPath(
 
   const closedSet = new Uint8Array(width * height);
 
-  // Priority queue (open list)
-  const openList: Node[] = [];
+  // Priority queue (binary min-heap with O(1) index map)
+  const heap = new BinaryHeap(width * height);
 
   const startH = octileDistance(
     start.tileX,
@@ -88,7 +195,7 @@ export function findPath(
   };
 
   gScores[start.tileY * width + start.tileX] = 0;
-  openList.push(startNode);
+  heap.push(startNode, width);
 
   // Directions: 4 cardinals, then 4 diagonals
   const directions: Array<{ dx: number; dy: number; cost: number; isDiag: boolean }> = [
@@ -102,20 +209,8 @@ export function findPath(
     { dx: 1, dy: 1, cost: Math.SQRT2, isDiag: true },
   ];
 
-  while (openList.length > 0) {
-    // Pop lowest f score
-    let lowestIdx = 0;
-    for (let i = 1; i < openList.length; i++) {
-      if (
-        openList[i].f < openList[lowestIdx].f ||
-        (openList[i].f === openList[lowestIdx].f &&
-          openList[i].h < openList[lowestIdx].h)
-      ) {
-        lowestIdx = i;
-      }
-    }
-
-    const current = openList.splice(lowestIdx, 1)[0];
+  while (heap.size > 0) {
+    const current = heap.pop(width);
     const curIdx = current.tileY * width + current.tileX;
 
     // Goal reached?
@@ -166,13 +261,10 @@ export function findPath(
           parent: current,
         };
 
-        const existingIdx = openList.findIndex(
-          (n) => n.tileX === nx && n.tileY === ny
-        );
-        if (existingIdx !== -1) {
-          openList[existingIdx] = neighborNode;
+        if (heap.isOpen(nx, ny, width)) {
+          heap.update(neighborNode, width);
         } else {
-          openList.push(neighborNode);
+          heap.push(neighborNode, width);
         }
       }
     }

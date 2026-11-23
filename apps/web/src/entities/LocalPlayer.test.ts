@@ -251,9 +251,15 @@ describe('LocalPlayer', () => {
     player.setAutoStroll(true);
     expect(player.isAutoStroll).toBe(true);
 
+    let strollStateDuringEmit: boolean | undefined;
+    gameEvents.on('localInput', () => {
+      strollStateDuringEmit = player.isAutoStroll;
+    });
+
     // 2. Manual keyboard input turns it off
     player.handleKeyDown('KeyD');
     expect(player.isAutoStroll).toBe(false);
+    expect(strollStateDuringEmit).toBe(false);
     expect(localInputListener).toHaveBeenCalled();
 
     // 3. Turn Auto-Stroll ON again
@@ -263,6 +269,62 @@ describe('LocalPlayer', () => {
     // 4. Manual click/tap-to-walk turns it off
     player.walkToTile(4, 4);
     expect(player.isAutoStroll).toBe(false);
+    expect(strollStateDuringEmit).toBe(false);
+  });
+
+  it('tapping a seat turns off auto-stroll, sits, and emits localInput', () => {
+    const map = createMockMap();
+    const seat = map.seats[0]; // at (100, 100)
+    const player = new LocalPlayer(map, undefined, undefined, {
+      initialX: 108,
+      initialY: 100,
+      skipPixi: true,
+    });
+
+    const localInputListener = vi.fn();
+    let strollStateDuringEmit: boolean | undefined;
+    gameEvents.on('localInput', () => {
+      localInputListener();
+      strollStateDuringEmit = player.isAutoStroll;
+    });
+
+    player.setAutoStroll(true);
+    expect(player.isAutoStroll).toBe(true);
+
+    const sat = player.tapSeat();
+    expect(sat).toBe(true);
+    expect(player.isAutoStroll).toBe(false);
+    expect(strollStateDuringEmit).toBe(false);
+    expect(player.action).toBe('sit');
+    expect(player.x).toBe(seat.x);
+    expect(player.y).toBe(seat.y + 2);
+    expect(localInputListener).toHaveBeenCalled();
+  });
+
+  it('ignores WASD and arrows while an <input> has focus and does not emit localInput', () => {
+    const map = createMockMap();
+    const player = new LocalPlayer(map, undefined, undefined, {
+      initialX: 50,
+      initialY: 50,
+      skipPixi: true,
+    });
+
+    const localInputListener = vi.fn();
+    gameEvents.on('localInput', localInputListener);
+
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+
+    player.handleKeyDown('KeyW');
+    player.handleKeyDown('ArrowDown');
+    player.update(0.016);
+
+    expect(player.x).toBe(50);
+    expect(player.y).toBe(50);
+    expect(localInputListener).not.toHaveBeenCalled();
+
+    document.body.removeChild(input);
   });
 
   it('getLocalState() returns {x, y, zone, facing, action}', () => {
