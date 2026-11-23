@@ -1,12 +1,12 @@
 export const PLACEHOLDER = 'lofi-forest';
 
 export const EMOTE_IDS = [
-  'wave',
   'heart',
-  'smile',
-  'sparkle',
+  'coffee',
   'music',
+  'wave',
   'zzz',
+  'sparkle',
 ] as const;
 
 export type EmoteId = (typeof EMOTE_IDS)[number];

@@ -134,7 +134,7 @@ export class AssetLoader {
         cacheKey,
         `[AssetLoader] Emote asset "${id}" not found in manifest. Falling back to procedural placeholder.`
       );
-      const placeholder = getEmotePlaceholder(id) ?? getPlaceholderTexture('smile');
+      const placeholder = getEmotePlaceholder(id) ?? getPlaceholderTexture('heart');
       this.textureCache.set(cacheKey, placeholder);
       return placeholder;
     }
@@ -146,7 +146,7 @@ export class AssetLoader {
           cacheKey,
           `[AssetLoader] Emote asset "${id}" at "${src}" returned HTTP ${res.status}. Falling back to procedural placeholder.`
         );
-        const placeholder = getEmotePlaceholder(id) ?? getPlaceholderTexture('smile');
+        const placeholder = getEmotePlaceholder(id) ?? getPlaceholderTexture('heart');
         this.textureCache.set(cacheKey, placeholder);
         return placeholder;
       }
@@ -164,7 +164,7 @@ export class AssetLoader {
         );
       }
 
-      const placeholder = getEmotePlaceholder(id) ?? getPlaceholderTexture('smile');
+      const placeholder = getEmotePlaceholder(id) ?? getPlaceholderTexture('heart');
       this.textureCache.set(cacheKey, placeholder);
       return placeholder;
     } catch (fetchErr) {
@@ -172,7 +172,7 @@ export class AssetLoader {
         cacheKey,
         `[AssetLoader] Failed to fetch emote "${id}" from "${src}": ${fetchErr}. Falling back to placeholder.`
       );
-      const placeholder = getEmotePlaceholder(id) ?? getPlaceholderTexture('smile');
+      const placeholder = getEmotePlaceholder(id) ?? getPlaceholderTexture('heart');
       this.textureCache.set(cacheKey, placeholder);
       return placeholder;
     }
@@ -356,7 +356,7 @@ export class AssetLoader {
 
   public getEmoteTextureSync(id: EmoteId | string): Texture {
     const cacheKey = `emote_${id}`;
-    return this.textureCache.get(cacheKey) || getEmotePlaceholder(id) || getPlaceholderTexture('smile');
+    return this.textureCache.get(cacheKey) || getEmotePlaceholder(id) || getPlaceholderTexture('heart');
   }
 
   public getTileTextureSync(tileId: string | number): Texture {

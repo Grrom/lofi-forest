@@ -37,23 +37,13 @@
       }
     ],
     "emotes": {
-      "wave": {
-        "src": "/assets/sprites/emotes/wave.png",
-        "author": "TBD",
-        "license": "TBD"
-      },
       "heart": {
         "src": "/assets/sprites/emotes/heart.png",
         "author": "TBD",
         "license": "TBD"
       },
-      "smile": {
-        "src": "/assets/sprites/emotes/smile.png",
-        "author": "TBD",
-        "license": "TBD"
-      },
-      "sparkle": {
-        "src": "/assets/sprites/emotes/sparkle.png",
+      "coffee": {
+        "src": "/assets/sprites/emotes/coffee.png",
         "author": "TBD",
         "license": "TBD"
       },
@@ -62,8 +52,18 @@
         "author": "TBD",
         "license": "TBD"
       },
+      "wave": {
+        "src": "/assets/sprites/emotes/wave.png",
+        "author": "TBD",
+        "license": "TBD"
+      },
       "zzz": {
         "src": "/assets/sprites/emotes/zzz.png",
+        "author": "TBD",
+        "license": "TBD"
+      },
+      "sparkle": {
+        "src": "/assets/sprites/emotes/sparkle.png",
         "author": "TBD",
         "license": "TBD"
       }

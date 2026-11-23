@@ -616,6 +616,7 @@ type TextureFactory = () => Texture;
 const GENERAL_FACTORIES: Record<string, TextureFactory> = {
   char_base: makeCharBase,
   tileset_forest: makeTilesetForest,
+  smile: makeEmoteSmile,
 };
 
 const TILE_FACTORIES: Record<string, TextureFactory> = {
@@ -646,12 +647,12 @@ const HAT_FACTORIES: Record<string, TextureFactory> = {
 };
 
 const EMOTE_FACTORIES: Record<string, TextureFactory> = {
-  wave: makeEmoteWave,
   heart: makeEmoteHeart,
-  smile: makeEmoteSmile,
-  sparkle: makeEmoteSparkle,
+  coffee: makeStatusCoffeeCup,
   music: makeEmoteMusic,
+  wave: makeEmoteWave,
   zzz: makeEmoteZzz,
+  sparkle: makeEmoteSparkle,
 };
 
 const STATUS_FACTORIES: Record<string, TextureFactory> = {
