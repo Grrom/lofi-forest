@@ -35,13 +35,27 @@ export interface StoragePrefs {
   showNames: boolean;
 }
 
+export function deepFreeze<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object' || Object.isFrozen(obj)) {
+    return obj;
+  }
+  Object.freeze(obj);
+  for (const key of Object.keys(obj)) {
+    const val = (obj as Record<string, unknown>)[key];
+    if (val !== null && typeof val === 'object') {
+      deepFreeze(val);
+    }
+  }
+  return obj;
+}
+
 export const DEFAULT_OUTFIT: Outfit = {
   baseId: 'default',
   hatId: 'none',
   colorHex: '#ffffff',
 };
 
-export const DEFAULT_PREFERENCES: StoragePrefs = {
+export const DEFAULT_PREFERENCES: StoragePrefs = deepFreeze({
   profile: {
     name: 'Wanderer',
     outfit: { ...DEFAULT_OUTFIT },
@@ -61,7 +75,7 @@ export const DEFAULT_PREFERENCES: StoragePrefs = {
   },
   zoom: 'auto',
   showNames: true,
-};
+});
 
 export function clonePrefs(prefs: StoragePrefs): StoragePrefs {
   return {
@@ -122,12 +136,12 @@ export class StorageManager {
 
   constructor(key: string = STORAGE_KEY) {
     this.key = key;
-    this.current = clonePrefs(DEFAULT_PREFERENCES);
+    this.current = deepFreeze(clonePrefs(DEFAULT_PREFERENCES));
   }
 
   private loadFromRaw(raw: string | null): StoragePrefs {
     if (raw === null || raw === undefined) {
-      return clonePrefs(DEFAULT_PREFERENCES);
+      return deepFreeze(clonePrefs(DEFAULT_PREFERENCES));
     }
 
     let parsed: unknown;
@@ -137,14 +151,14 @@ export class StorageManager {
       console.warn(
         `[StorageManager] Invalid JSON in storage for key "${this.key}"; falling back to defaults.`
       );
-      return clonePrefs(DEFAULT_PREFERENCES);
+      return deepFreeze(clonePrefs(DEFAULT_PREFERENCES));
     }
 
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       console.warn(
         `[StorageManager] Stored data for key "${this.key}" is not an object; falling back to defaults.`
       );
-      return clonePrefs(DEFAULT_PREFERENCES);
+      return deepFreeze(clonePrefs(DEFAULT_PREFERENCES));
     }
 
     const p = parsed as Record<string, unknown>;
@@ -327,7 +341,7 @@ export class StorageManager {
     }
 
     // Unknown keys are dropped by explicitly constructing the returned object
-    return {
+    return deepFreeze({
       profile: {
         name,
         outfit,
@@ -337,7 +351,7 @@ export class StorageManager {
       pomo,
       zoom,
       showNames,
-    };
+    });
   }
 
   private mergePrefs(
@@ -369,7 +383,7 @@ export class StorageManager {
           : current.profile.outfit.colorHex,
     };
 
-    let unlockedLandmarks = current.unlockedLandmarks;
+    let unlockedLandmarks = [...current.unlockedLandmarks];
     if (patch.unlockedLandmarks !== undefined) {
       if (Array.isArray(patch.unlockedLandmarks)) {
         const valid = patch.unlockedLandmarks.filter(
@@ -437,7 +451,7 @@ export class StorageManager {
         ? patch.showNames
         : current.showNames;
 
-    return {
+    return deepFreeze({
       profile: {
         name,
         outfit,
@@ -447,7 +461,7 @@ export class StorageManager {
       pomo,
       zoom,
       showNames,
-    };
+    });
   }
 
   public get(): StoragePrefs {
@@ -519,7 +533,7 @@ export class StorageManager {
     this.lastStoredRaw = null;
     this.inMemoryDirty = false;
     this.listeners.clear();
-    this.current = clonePrefs(DEFAULT_PREFERENCES);
+    this.current = deepFreeze(clonePrefs(DEFAULT_PREFERENCES));
   }
 
   // Static proxy methods

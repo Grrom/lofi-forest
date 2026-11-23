@@ -3,13 +3,38 @@ import { renderHook, act } from '@testing-library/react';
 import {
   StorageManager,
   STORAGE_KEY,
-  DEFAULT_PREFERENCES,
   get,
   update,
   subscribe,
   resetStorageManager,
   usePrefs,
 } from './StorageManager';
+
+const DOCUMENTED_DEFAULTS = {
+  profile: {
+    name: 'Wanderer',
+    outfit: {
+      baseId: 'default',
+      hatId: 'none',
+      colorHex: '#ffffff',
+    },
+  },
+  unlockedLandmarks: ['forest_clearing'],
+  volumes: {
+    master: 0.8,
+    music: 0.6,
+    rain: 0.5,
+    campfire: 0.5,
+    ambience: 0.5,
+  },
+  pomo: {
+    preset: '25/5' as const,
+    focusMin: 25,
+    breakMin: 5,
+  },
+  zoom: 'auto' as const,
+  showNames: true,
+};
 
 describe('StorageManager', () => {
   beforeEach(() => {
@@ -22,7 +47,31 @@ describe('StorageManager', () => {
   it('with empty storage, get() returns the documented defaults', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const prefs = get();
-    expect(prefs).toEqual(DEFAULT_PREFERENCES);
+    expect(prefs).toEqual({
+      profile: {
+        name: 'Wanderer',
+        outfit: {
+          baseId: 'default',
+          hatId: 'none',
+          colorHex: '#ffffff',
+        },
+      },
+      unlockedLandmarks: ['forest_clearing'],
+      volumes: {
+        master: 0.8,
+        music: 0.6,
+        rain: 0.5,
+        campfire: 0.5,
+        ambience: 0.5,
+      },
+      pomo: {
+        preset: '25/5',
+        focusMin: 25,
+        breakMin: 5,
+      },
+      zoom: 'auto',
+      showNames: true,
+    });
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
@@ -32,7 +81,7 @@ describe('StorageManager', () => {
     localStorage.setItem(STORAGE_KEY, '{not json');
 
     const prefs = get();
-    expect(prefs).toEqual(DEFAULT_PREFERENCES);
+    expect(prefs).toEqual(DOCUMENTED_DEFAULTS);
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls[0][0]).toContain('Invalid JSON');
   });
@@ -55,9 +104,9 @@ describe('StorageManager', () => {
     expect(prefs.volumes.master).toBe(1);
     expect(prefs.pomo.focusMin).toBe(1);
     // Other fields fall back to defaults
-    expect(prefs.volumes.music).toBe(DEFAULT_PREFERENCES.volumes.music);
-    expect(prefs.pomo.preset).toBe(DEFAULT_PREFERENCES.pomo.preset);
-    expect(prefs.pomo.breakMin).toBe(DEFAULT_PREFERENCES.pomo.breakMin);
+    expect(prefs.volumes.music).toBe(DOCUMENTED_DEFAULTS.volumes.music);
+    expect(prefs.pomo.preset).toBe(DOCUMENTED_DEFAULTS.pomo.preset);
+    expect(prefs.pomo.breakMin).toBe(DOCUMENTED_DEFAULTS.pomo.breakMin);
   });
 
   // Acceptance Criterion 4
@@ -134,10 +183,10 @@ describe('StorageManager', () => {
 
       const prefs = get();
       expect(prefs.volumes.rain).toBe(0.1);
-      expect(prefs.volumes.master).toBe(DEFAULT_PREFERENCES.volumes.master);
-      expect(prefs.volumes.music).toBe(DEFAULT_PREFERENCES.volumes.music);
-      expect(prefs.volumes.campfire).toBe(DEFAULT_PREFERENCES.volumes.campfire);
-      expect(prefs.volumes.ambience).toBe(DEFAULT_PREFERENCES.volumes.ambience);
+      expect(prefs.volumes.master).toBe(DOCUMENTED_DEFAULTS.volumes.master);
+      expect(prefs.volumes.music).toBe(DOCUMENTED_DEFAULTS.volumes.music);
+      expect(prefs.volumes.campfire).toBe(DOCUMENTED_DEFAULTS.volumes.campfire);
+      expect(prefs.volumes.ambience).toBe(DOCUMENTED_DEFAULTS.volumes.ambience);
     });
 
     it('drops unknown keys on load and sanitizes profile name', () => {
@@ -197,7 +246,7 @@ describe('StorageManager', () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify([1, 2, 3]));
 
       const prefs = get();
-      expect(prefs).toEqual(DEFAULT_PREFERENCES);
+      expect(prefs).toEqual(DOCUMENTED_DEFAULTS);
       expect(warnSpy).toHaveBeenCalledTimes(1);
     });
 
@@ -227,7 +276,7 @@ describe('StorageManager', () => {
 
     it('allows isolated StorageManager instances with custom keys', () => {
       const customManager = new StorageManager('custom-key');
-      expect(customManager.get()).toEqual(DEFAULT_PREFERENCES);
+      expect(customManager.get()).toEqual(DOCUMENTED_DEFAULTS);
 
       customManager.update({ zoom: 4 });
       expect(customManager.get().zoom).toBe(4);
@@ -236,6 +285,20 @@ describe('StorageManager', () => {
       const customRaw = localStorage.getItem('custom-key');
       expect(customRaw).not.toBeNull();
       expect(JSON.parse(customRaw!).zoom).toBe(4);
+    });
+
+    it('returns a deeply frozen preferences object from get() to prevent accidental mutation', () => {
+      const prefs = get();
+      expect(Object.isFrozen(prefs)).toBe(true);
+      expect(Object.isFrozen(prefs.profile)).toBe(true);
+      expect(Object.isFrozen(prefs.profile.outfit)).toBe(true);
+      expect(Object.isFrozen(prefs.unlockedLandmarks)).toBe(true);
+      expect(Object.isFrozen(prefs.volumes)).toBe(true);
+      expect(Object.isFrozen(prefs.pomo)).toBe(true);
+
+      expect(() => {
+        (prefs.volumes as unknown as { master: number }).master = 0.2;
+      }).toThrow();
     });
   });
 });
