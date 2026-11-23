@@ -1,0 +1,104 @@
+{
+  "sprites": {
+    "tileset_forest": {
+      "src": "/assets/sprites/tileset_forest.png",
+      "author": "Human Artist",
+      "license": "CC-BY-4.0"
+    },
+    "char_base": {
+      "src": "/assets/sprites/char_base.png",
+      "author": "Human Artist",
+      "license": "CC-BY-4.0"
+    },
+    "hats": [
+      {
+        "id": "none",
+        "src": "/assets/sprites/hats/none.png",
+        "author": "Human Artist",
+        "license": "CC0"
+      },
+      {
+        "id": "beanie",
+        "src": "/assets/sprites/hats/beanie.png",
+        "author": "Human Artist",
+        "license": "CC-BY-4.0"
+      },
+      {
+        "id": "cap",
+        "src": "/assets/sprites/hats/cap.png",
+        "author": "Human Artist",
+        "license": "CC-BY-4.0"
+      },
+      {
+        "id": "flower",
+        "src": "/assets/sprites/hats/flower.png",
+        "author": "Human Artist",
+        "license": "CC-BY-4.0"
+      }
+    ],
+    "emotes": {
+      "wave": {
+        "src": "/assets/sprites/emotes/wave.png",
+        "author": "Human Artist",
+        "license": "CC-BY-4.0"
+      },
+      "heart": {
+        "src": "/assets/sprites/emotes/heart.png",
+        "author": "Human Artist",
+        "license": "CC-BY-4.0"
+      },
+      "smile": {
+        "src": "/assets/sprites/emotes/smile.png",
+        "author": "Human Artist",
+        "license": "CC-BY-4.0"
+      },
+      "sparkle": {
+        "src": "/assets/sprites/emotes/sparkle.png",
+        "author": "Human Artist",
+        "license": "CC-BY-4.0"
+      },
+      "music": {
+        "src": "/assets/sprites/emotes/music.png",
+        "author": "Human Artist",
+        "license": "CC-BY-4.0"
+      },
+      "zzz": {
+        "src": "/assets/sprites/emotes/zzz.png",
+        "author": "Human Artist",
+        "license": "CC-BY-4.0"
+      }
+    }
+  },
+  "audio": {
+    "bgm": [
+      {
+        "id": "forest_lullaby",
+        "title": "Forest Lullaby",
+        "artist": "Human Composer",
+        "src": "/assets/audio/bgm/forest_lullaby.ogg"
+      }
+    ],
+    "ambience": {
+      "rain": {
+        "src": "/assets/audio/ambience/rain.ogg"
+      },
+      "campfire": {
+        "src": "/assets/audio/ambience/campfire.ogg"
+      },
+      "forest": {
+        "src": "/assets/audio/ambience/forest.ogg"
+      },
+      "pub": {
+        "src": "/assets/audio/ambience/pub.ogg"
+      }
+    },
+    "sfx": {
+      "pomo_chime": {
+        "src": "/assets/audio/sfx/pomo_chime.ogg"
+      },
+      "teleport": {
+        "src": "/assets/audio/sfx/teleport.ogg"
+      }
+    }
+  }
+}

@@ -1,9 +1,22 @@
+import { setupPixi } from './engine/pixiSetup';
+// pixiSetup sets TextureStyle.defaultOptions.scaleMode = 'nearest' before textures or loader run
+setupPixi();
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { Application } from 'pixi.js';
+import { Application, TextureStyle } from 'pixi.js';
 import App from './App';
+import { assetLoader } from './engine/assets/AssetLoader';
 
 export async function initApp() {
+  // Ensure scaleMode is nearest first
+  setupPixi();
+
+  // Load asset manifest
+  await assetLoader.loadManifest().catch((err) => {
+    console.warn('Initial manifest load failed, using fallbacks:', err);
+  });
+
   const app = new Application();
   await app.init({
     resizeTo: window,
