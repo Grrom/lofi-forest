@@ -2,70 +2,70 @@
   "sprites": {
     "tileset_forest": {
       "src": "/assets/sprites/tileset_forest.png",
-      "author": "Human Artist",
-      "license": "CC-BY-4.0"
+      "author": "TBD",
+      "license": "TBD"
     },
     "char_base": {
       "src": "/assets/sprites/char_base.png",
-      "author": "Human Artist",
-      "license": "CC-BY-4.0"
+      "author": "TBD",
+      "license": "TBD"
     },
     "hats": [
       {
         "id": "none",
         "src": "/assets/sprites/hats/none.png",
-        "author": "Human Artist",
-        "license": "CC0"
+        "author": "TBD",
+        "license": "TBD"
       },
       {
         "id": "beanie",
         "src": "/assets/sprites/hats/beanie.png",
-        "author": "Human Artist",
-        "license": "CC-BY-4.0"
+        "author": "TBD",
+        "license": "TBD"
       },
       {
         "id": "cap",
         "src": "/assets/sprites/hats/cap.png",
-        "author": "Human Artist",
-        "license": "CC-BY-4.0"
+        "author": "TBD",
+        "license": "TBD"
       },
       {
         "id": "flower",
         "src": "/assets/sprites/hats/flower.png",
-        "author": "Human Artist",
-        "license": "CC-BY-4.0"
+        "author": "TBD",
+        "license": "TBD"
       }
     ],
     "emotes": {
       "wave": {
         "src": "/assets/sprites/emotes/wave.png",
-        "author": "Human Artist",
-        "license": "CC-BY-4.0"
+        "author": "TBD",
+        "license": "TBD"
       },
       "heart": {
         "src": "/assets/sprites/emotes/heart.png",
-        "author": "Human Artist",
-        "license": "CC-BY-4.0"
+        "author": "TBD",
+        "license": "TBD"
       },
       "smile": {
         "src": "/assets/sprites/emotes/smile.png",
-        "author": "Human Artist",
-        "license": "CC-BY-4.0"
+        "author": "TBD",
+        "license": "TBD"
       },
       "sparkle": {
         "src": "/assets/sprites/emotes/sparkle.png",
-        "author": "Human Artist",
-        "license": "CC-BY-4.0"
+        "author": "TBD",
+        "license": "TBD"
       },
       "music": {
         "src": "/assets/sprites/emotes/music.png",
-        "author": "Human Artist",
-        "license": "CC-BY-4.0"
+        "author": "TBD",
+        "license": "TBD"
       },
       "zzz": {
         "src": "/assets/sprites/emotes/zzz.png",
-        "author": "Human Artist",
-        "license": "CC-BY-4.0"
+        "author": "TBD",
+        "license": "TBD"
       }
     }
   },
@@ -74,7 +74,7 @@
       {
         "id": "forest_lullaby",
         "title": "Forest Lullaby",
-        "artist": "Human Composer",
+        "artist": "TBD",
         "src": "/assets/audio/bgm/forest_lullaby.ogg"
       }
     ],

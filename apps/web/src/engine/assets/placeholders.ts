@@ -340,7 +340,7 @@ function makeRug(): Texture {
   });
 }
 
-// 17. Flower
+// 17. Flower tile
 function makeFlower(): Texture {
   return createProceduralTexture(16, 16, (x, y) => {
     // Cute blossom
@@ -562,7 +562,11 @@ function makeStatusCoffeeCup(): Texture {
   return createProceduralTexture(16, 16, (x, y) => {
     // Steam swirls
     if (y <= 3) {
-      if ((y === 1 && (x === 6 || x === 9)) || (y === 2 && (x === 7 || x === 10)) || (y === 3 && (x === 6 || x === 9))) {
+      if (
+        (y === 1 && (x === 6 || x === 9)) ||
+        (y === 2 && (x === 7 || x === 10)) ||
+        (y === 3 && (x === 6 || x === 9))
+      ) {
         return PALETTE.warmWhite;
       }
       return TRANSPARENT;
@@ -607,166 +611,197 @@ function makeTilesetForest(): Texture {
   });
 }
 
-export interface PlaceholderRegistry {
-  // Tiles
-  grass_0: Texture;
-  grass_1: Texture;
-  dirt_path: Texture;
-  water_0: Texture;
-  water_1: Texture;
-  wooden_floor: Texture;
-  wall: Texture;
-  door: Texture;
-  tree_trunk: Texture;
-  tree_canopy: Texture;
-  log_seat: Texture;
-  stool: Texture;
-  bench: Texture;
-  campfire: Texture;
-  pier_planks: Texture;
-  rug: Texture;
-  flower: Texture;
+type TextureFactory = () => Texture;
 
-  // Character
-  char_base: Texture;
-
-  // Hats
-  none: Texture;
-  beanie: Texture;
-  cap: Texture;
-  hat_flower: Texture;
-
-  // Emotes
-  wave: Texture;
-  heart: Texture;
-  smile: Texture;
-  sparkle: Texture;
-  music: Texture;
-  zzz: Texture;
-
-  // Status icons
-  book: Texture;
-  coffee_cup: Texture;
-
-  // Tileset
-  tileset_forest: Texture;
-
-  [key: string]: Texture;
-}
-
-export const PLACEHOLDER_TEXTURES: PlaceholderRegistry = {
-  // Tiles
-  grass_0: makeGrass0(),
-  grass_1: makeGrass1(),
-  dirt_path: makeDirtPath(),
-  water_0: makeWater0(),
-  water_1: makeWater1(),
-  wooden_floor: makeWoodenFloor(),
-  wall: makeWall(),
-  door: makeDoor(),
-  tree_trunk: makeTreeTrunk(),
-  tree_canopy: makeTreeCanopy(),
-  log_seat: makeLogSeat(),
-  stool: makeStool(),
-  bench: makeBench(),
-  campfire: makeCampfire(),
-  pier_planks: makePierPlanks(),
-  rug: makeRug(),
-  flower: makeFlower(),
-
-  // Character
-  char_base: makeCharBase(),
-
-  // Hats
-  none: makeHatNone(),
-  beanie: makeHatBeanie(),
-  cap: makeHatCap(),
-  hat_flower: makeHatFlower(),
-
-  // Emotes
-  wave: makeEmoteWave(),
-  heart: makeEmoteHeart(),
-  smile: makeEmoteSmile(),
-  sparkle: makeEmoteSparkle(),
-  music: makeEmoteMusic(),
-  zzz: makeEmoteZzz(),
-
-  // Status icons
-  book: makeStatusBook(),
-  coffee_cup: makeStatusCoffeeCup(),
-  coffee: makeStatusCoffeeCup(),
-
-  // Tileset
-  tileset_forest: makeTilesetForest(),
+const GENERAL_FACTORIES: Record<string, TextureFactory> = {
+  char_base: makeCharBase,
+  tileset_forest: makeTilesetForest,
 };
 
-// Aliases for convenience
-PLACEHOLDER_TEXTURES['hat_none'] = PLACEHOLDER_TEXTURES['none'];
-PLACEHOLDER_TEXTURES['hat_beanie'] = PLACEHOLDER_TEXTURES['beanie'];
-PLACEHOLDER_TEXTURES['hat_cap'] = PLACEHOLDER_TEXTURES['cap'];
-// In manifest, hat id is "flower", so let's ensure both "flower" and "hat_flower" exist
-// If key is "hat_flower", it's the hat; for "flower", hat lookup by id 'flower' can resolve hat_flower or flower.
+const TILE_FACTORIES: Record<string, TextureFactory> = {
+  grass_0: makeGrass0,
+  grass_1: makeGrass1,
+  dirt_path: makeDirtPath,
+  water_0: makeWater0,
+  water_1: makeWater1,
+  wooden_floor: makeWoodenFloor,
+  wall: makeWall,
+  door: makeDoor,
+  tree_trunk: makeTreeTrunk,
+  tree_canopy: makeTreeCanopy,
+  log_seat: makeLogSeat,
+  stool: makeStool,
+  bench: makeBench,
+  campfire: makeCampfire,
+  pier_planks: makePierPlanks,
+  rug: makeRug,
+  flower: makeFlower,
+};
 
-export function getPlaceholderTexture(key: string): Texture {
-  if (PLACEHOLDER_TEXTURES[key]) {
-    return PLACEHOLDER_TEXTURES[key];
+const HAT_FACTORIES: Record<string, TextureFactory> = {
+  none: makeHatNone,
+  beanie: makeHatBeanie,
+  cap: makeHatCap,
+  flower: makeHatFlower,
+};
+
+const EMOTE_FACTORIES: Record<string, TextureFactory> = {
+  wave: makeEmoteWave,
+  heart: makeEmoteHeart,
+  smile: makeEmoteSmile,
+  sparkle: makeEmoteSparkle,
+  music: makeEmoteMusic,
+  zzz: makeEmoteZzz,
+};
+
+const STATUS_FACTORIES: Record<string, TextureFactory> = {
+  book: makeStatusBook,
+  coffee_cup: makeStatusCoffeeCup,
+  coffee: makeStatusCoffeeCup,
+};
+
+// Lazy memoization cache
+const placeholderCache = new Map<string, Texture>();
+
+export function getHatPlaceholder(id: HatId | string): Texture | undefined {
+  const norm = id.startsWith('hat_') ? id.slice(4) : id;
+  const factory = HAT_FACTORIES[norm];
+  if (!factory) return undefined;
+  const cacheKey = `hat_${norm}`;
+  if (!placeholderCache.has(cacheKey)) {
+    placeholderCache.set(cacheKey, factory());
   }
-  // Try stripped prefixes
-  if (key.startsWith('hat_') && PLACEHOLDER_TEXTURES[key.slice(4)]) {
-    return PLACEHOLDER_TEXTURES[key.slice(4)];
-  }
-  if (key.startsWith('emote_') && PLACEHOLDER_TEXTURES[key.slice(6)]) {
-    return PLACEHOLDER_TEXTURES[key.slice(6)];
-  }
-  if (key.startsWith('tile_') && PLACEHOLDER_TEXTURES[key.slice(5)]) {
-    return PLACEHOLDER_TEXTURES[key.slice(5)];
-  }
-  if (key.startsWith('status_') && PLACEHOLDER_TEXTURES[key.slice(7)]) {
-    return PLACEHOLDER_TEXTURES[key.slice(7)];
-  }
-  // Default to grass_0
-  return PLACEHOLDER_TEXTURES.grass_0;
+  return placeholderCache.get(cacheKey)!;
 }
 
-export function getHatPlaceholder(id: HatId | string): Texture {
-  if (id === 'flower') return PLACEHOLDER_TEXTURES.hat_flower;
-  if (PLACEHOLDER_TEXTURES[id]) return PLACEHOLDER_TEXTURES[id];
-  if (PLACEHOLDER_TEXTURES[`hat_${id}`]) return PLACEHOLDER_TEXTURES[`hat_${id}`];
-  return PLACEHOLDER_TEXTURES.none;
-}
-
-export function getEmotePlaceholder(id: EmoteId | string): Texture {
-  if (PLACEHOLDER_TEXTURES[id]) return PLACEHOLDER_TEXTURES[id];
-  if (PLACEHOLDER_TEXTURES[`emote_${id}`]) return PLACEHOLDER_TEXTURES[`emote_${id}`];
-  return PLACEHOLDER_TEXTURES.smile;
+export function getEmotePlaceholder(id: EmoteId | string): Texture | undefined {
+  const norm = id.startsWith('emote_') ? id.slice(6) : id;
+  const factory = EMOTE_FACTORIES[norm];
+  if (!factory) return undefined;
+  const cacheKey = `emote_${norm}`;
+  if (!placeholderCache.has(cacheKey)) {
+    placeholderCache.set(cacheKey, factory());
+  }
+  return placeholderCache.get(cacheKey)!;
 }
 
 export function getTilePlaceholder(tileId: string | number): Texture {
-  if (typeof tileId === 'string' && PLACEHOLDER_TEXTURES[tileId]) {
-    return PLACEHOLDER_TEXTURES[tileId];
-  }
-  const tileKeys = [
-    'grass_0',
-    'grass_1',
-    'dirt_path',
-    'water_0',
-    'water_1',
-    'wooden_floor',
-    'wall',
-    'door',
-    'tree_trunk',
-    'tree_canopy',
-    'log_seat',
-    'stool',
-    'bench',
-    'campfire',
-    'pier_planks',
-    'rug',
-    'flower',
-  ];
   if (typeof tileId === 'number') {
+    const tileKeys = [
+      'grass_0',
+      'grass_1',
+      'dirt_path',
+      'water_0',
+      'water_1',
+      'wooden_floor',
+      'wall',
+      'door',
+      'tree_trunk',
+      'tree_canopy',
+      'log_seat',
+      'stool',
+      'bench',
+      'campfire',
+      'pier_planks',
+      'rug',
+      'flower',
+    ];
     const key = tileKeys[tileId % tileKeys.length];
-    return PLACEHOLDER_TEXTURES[key];
+    return getTilePlaceholder(key);
   }
-  return PLACEHOLDER_TEXTURES.grass_0;
+
+  const norm = tileId.startsWith('tile_') ? tileId.slice(5) : tileId;
+  const cacheKey = `tile_${norm}`;
+  if (placeholderCache.has(cacheKey)) {
+    return placeholderCache.get(cacheKey)!;
+  }
+  const factory = TILE_FACTORIES[norm];
+  if (factory) {
+    const tex = factory();
+    placeholderCache.set(cacheKey, tex);
+    return tex;
+  }
+  return getTilePlaceholder('grass_0');
 }
+
+export function getPlaceholderTexture(key: string): Texture {
+  if (placeholderCache.has(key)) {
+    return placeholderCache.get(key)!;
+  }
+
+  // 1. General factories (char_base, tileset_forest)
+  if (GENERAL_FACTORIES[key]) {
+    const tex = GENERAL_FACTORIES[key]();
+    placeholderCache.set(key, tex);
+    return tex;
+  }
+
+  // 2. Status icons (book, coffee_cup, coffee)
+  if (STATUS_FACTORIES[key]) {
+    const tex = STATUS_FACTORIES[key]();
+    placeholderCache.set(key, tex);
+    return tex;
+  }
+
+  // 3. Tile factories
+  if (TILE_FACTORIES[key]) {
+    const tex = TILE_FACTORIES[key]();
+    placeholderCache.set(key, tex);
+    return tex;
+  }
+
+  // 4. Prefixed or specific lookups
+  if (key === 'hat_flower' || key.startsWith('hat_')) {
+    const hat = getHatPlaceholder(key);
+    if (hat) return hat;
+  }
+  if (key.startsWith('emote_')) {
+    const emote = getEmotePlaceholder(key);
+    if (emote) return emote;
+  }
+  if (key.startsWith('tile_')) {
+    return getTilePlaceholder(key);
+  }
+  if (key.startsWith('status_')) {
+    const sub = key.slice(7);
+    if (STATUS_FACTORIES[sub]) {
+      return getPlaceholderTexture(sub);
+    }
+  }
+
+  // 5. Emote by ID (wave, heart, etc.)
+  if (EMOTE_FACTORIES[key]) {
+    const emote = getEmotePlaceholder(key);
+    if (emote) return emote;
+  }
+
+  // 6. Hat by ID (none, beanie, cap; flower handled earlier)
+  if (HAT_FACTORIES[key]) {
+    const hat = getHatPlaceholder(key);
+    if (hat) return hat;
+  }
+
+  // Default fallback
+  return getPlaceholderTexture('grass_0');
+}
+
+// Backward-compatible lazy access proxy
+export const PLACEHOLDER_TEXTURES: Record<string, Texture> = new Proxy(
+  {} as Record<string, Texture>,
+  {
+    get(_target, prop: string) {
+      if (prop === 'hat_flower') return getHatPlaceholder('flower')!;
+      return getPlaceholderTexture(prop);
+    },
+    has(_target, prop: string) {
+      return Boolean(
+        GENERAL_FACTORIES[prop] ||
+          TILE_FACTORIES[prop] ||
+          HAT_FACTORIES[prop] ||
+          EMOTE_FACTORIES[prop] ||
+          STATUS_FACTORIES[prop] ||
+          prop === 'hat_flower'
+      );
+    },
+  }
+);
