@@ -3,9 +3,7 @@ import { render, screen } from '@testing-library/react';
 import App from './App';
 
 describe('apps/web', () => {
-  // Acceptance criterion / Scope:
-  // "src/main.tsx mounts a React root over a full-window Pixi Application (dark green background)."
-  it('mounts a React root over full-window Pixi Application', () => {
+  it('renders the HUD heading', () => {
     render(<App />);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('lofi-forest');
   });

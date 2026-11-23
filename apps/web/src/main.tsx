@@ -27,6 +27,4 @@ export async function initApp() {
   return app;
 }
 
-if (typeof window !== 'undefined' && typeof document !== 'undefined' && !process.env.VITEST) {
-  initApp().catch(console.error);
-}
+initApp().catch(console.error);
