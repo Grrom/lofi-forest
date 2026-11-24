@@ -381,6 +381,18 @@ function makeCharBase(): Texture {
   });
 }
 
+// 18b. Character Clothing Layer (16×16 white tunic ready for tinting)
+function makeCharClothing(): Texture {
+  return createProceduralTexture(16, 16, (x, y) => {
+    // Body / Tunic (y: 9..12, x: 4..11)
+    if (y >= 9 && y <= 12 && x >= 4 && x <= 11) {
+      if (x === 4 || x === 11 || y === 12) return [200, 200, 200, 255];
+      return [255, 255, 255, 255];
+    }
+    return TRANSPARENT;
+  });
+}
+
 // Hats
 function makeHatNone(): Texture {
   return createProceduralTexture(16, 16, () => TRANSPARENT);
@@ -615,6 +627,7 @@ type TextureFactory = () => Texture;
 
 const GENERAL_FACTORIES: Record<string, TextureFactory> = {
   char_base: makeCharBase,
+  char_clothing: makeCharClothing,
   tileset_forest: makeTilesetForest,
   smile: makeEmoteSmile,
 };
