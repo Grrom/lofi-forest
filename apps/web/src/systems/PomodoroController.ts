@@ -290,9 +290,10 @@ export class PomodoroController {
     this.endsAtMs = newEndsAtMs;
 
     if (newPhase === 'focus') {
+      this.releaseChime();
       this.scheduleChime();
     } else {
-      this.cancelChime();
+      this.releaseChime();
     }
 
     this.emitPhaseChanged();
@@ -379,6 +380,11 @@ export class PomodoroController {
     }
   }
 
+  private releaseChime(): void {
+    this.chimeHandle = null;
+    this.chimeScheduled = false;
+  }
+
   private cancelChime(): void {
     if (this.chimeScheduled) {
       if (this.audio && typeof this.audio.cancelChime === 'function') {
@@ -386,8 +392,7 @@ export class PomodoroController {
       } else if (this.chimeHandle && typeof this.chimeHandle.stop === 'function') {
         this.chimeHandle.stop();
       }
-      this.chimeHandle = null;
-      this.chimeScheduled = false;
+      this.releaseChime();
     }
   }
 

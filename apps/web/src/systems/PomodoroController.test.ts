@@ -131,6 +131,63 @@ describe('PomodoroController', () => {
     controller.destroy();
   });
 
+  it('natural focus -> break transition in tick() does not cancel scheduled chime', () => {
+    let currentTime = 0;
+    const now = () => currentTime;
+    const mockAudio = {
+      scheduleChime: vi.fn((endsAt) => ({ id: 42, when: endsAt })),
+      cancelChime: vi.fn(),
+    };
+
+    const controller = new PomodoroController({
+      now,
+      audio: mockAudio,
+      autoDriver: false,
+    });
+    controller.setPreset('25/5');
+
+    controller.start();
+    expect(mockAudio.scheduleChime).toHaveBeenCalledWith(1500000);
+    expect(mockAudio.cancelChime).not.toHaveBeenCalled();
+
+    // Natural transition at endsAtMs
+    currentTime = 1500000;
+    const tickResult = controller.tick();
+
+    expect(tickResult.to).toBe('break');
+    expect(mockAudio.cancelChime).not.toHaveBeenCalled();
+
+    controller.destroy();
+  });
+
+  it('natural transition into focus in tick() schedules new chime without cancelling natural previous chime', () => {
+    let currentTime = 0;
+    const now = () => currentTime;
+    const mockAudio = {
+      scheduleChime: vi.fn((endsAt) => ({ id: 42, when: endsAt })),
+      cancelChime: vi.fn(),
+    };
+
+    const controller = new PomodoroController({
+      now,
+      audio: mockAudio,
+      autoDriver: false,
+    });
+    controller.setPreset('25/5');
+
+    controller.start();
+    expect(mockAudio.scheduleChime).toHaveBeenCalledTimes(1);
+
+    // Jump into break, then next focus (t=1 800 000 is start of next focus)
+    currentTime = 1800000;
+    const tickResult = controller.tick();
+    expect(tickResult.to).toBe('focus');
+    expect(mockAudio.scheduleChime).toHaveBeenCalledTimes(2);
+    expect(mockAudio.cancelChime).not.toHaveBeenCalled();
+
+    controller.destroy();
+  });
+
   // Acceptance criterion:
   // Test: during focus the AfkDetector never triggers sleep.
   it('during focus the AfkDetector never triggers sleep', () => {

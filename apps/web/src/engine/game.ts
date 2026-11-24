@@ -15,6 +15,34 @@ import { LocalPlayer } from '../entities/LocalPlayer';
 import type { AssetManifest, PomoBadge, ZoneId } from '@lofi/shared';
 import { pomodoroController } from '../systems/PomodoroController';
 
+export interface PomoEffectTargets {
+  player?: {
+    celebrate?: () => void;
+  };
+  atmosphere?: {
+    setVignette?: (enabled: boolean) => void;
+    pulseGlow?: () => void;
+  };
+}
+
+export function applyPomoPhaseEffects(
+  prevBadge: PomoBadge,
+  nextBadge: PomoBadge,
+  targets: PomoEffectTargets
+): void {
+  if (nextBadge === 'focus') {
+    targets.atmosphere?.setVignette?.(true);
+  } else {
+    targets.atmosphere?.setVignette?.(false);
+  }
+
+  // on focus → break: celebrate(), pulseGlow(), vignette off
+  if (prevBadge === 'focus' && nextBadge === 'break') {
+    targets.player?.celebrate?.();
+    targets.atmosphere?.pulseGlow?.();
+  }
+}
+
 export class GameEngine {
   public app!: Application;
   public worldContainer!: Container;
@@ -134,26 +162,16 @@ export class GameEngine {
 
     // 8b. Initial Pomodoro sync and event subscription
     const initialBadge = pomodoroController.localBadge();
-    this.player.setStatus(initialBadge);
     if (initialBadge === 'focus') {
       this.atmosphere.setVignette(true);
     }
 
     let prevBadge: PomoBadge = initialBadge;
     this.unsubPomo = gameEvents.on('pomoPhaseChanged', ({ phase }) => {
-      this.player?.setStatus(phase);
-      if (phase === 'focus') {
-        this.atmosphere?.setVignette(true);
-      } else {
-        this.atmosphere?.setVignette(false);
-      }
-
-      // on focus → break: celebrate(), pulseGlow(), vignette off
-      if (prevBadge === 'focus' && phase === 'break') {
-        this.player?.celebrate();
-        this.atmosphere?.pulseGlow();
-      }
-
+      applyPomoPhaseEffects(prevBadge, phase, {
+        player: this.player,
+        atmosphere: this.atmosphere,
+      });
       prevBadge = phase;
     });
 

@@ -146,6 +146,7 @@ export class LocalPlayer {
       facing: this.facing,
       action: this.action,
     });
+    this.avatar.setStatus(pomodoroController.localBadge());
     this.avatar.position.set(Math.round(this.x), Math.round(this.y));
     (this.avatar as any).footY = this.y;
     this.avatar.zIndex = Math.round(this.y);
