@@ -67,6 +67,8 @@ export class LocalPlayer {
   private strollWaitUntilMs = 0;
   private doorCooldownUntilMs = 0;
   private lastDoorId: string | null = null;
+  private celebrateUntilMs = 0;
+  private previousActionBeforeCelebrate: PlayerAction = 'idle';
   private unsubStorage?: () => void;
 
   private onKeyDownBound?: (e: KeyboardEvent) => void;
@@ -108,7 +110,7 @@ export class LocalPlayer {
     }
 
     // Initialize AfkDetector
-    this.afkDetector = new AfkDetector(this);
+    this.afkDetector = new AfkDetector(this, () => this.isAutoStroll);
 
     // Setup Pixi containers if not skipped
     if (!options?.skipPixi && layers) {
@@ -220,20 +222,26 @@ export class LocalPlayer {
       this.setAutoStroll(false);
     }
 
-    gameEvents.emit('localInput', {});
+    if (code === 'KeyV') {
+      if (this.afkDetector?.isSleeping) {
+        this.afkDetector.wakeUp();
+      }
+      this.action = this.action === 'vibe' ? 'idle' : 'vibe';
+      gameEvents.emit('localInput', {});
+      return;
+    }
 
     if (code === 'KeyE') {
+      if (this.afkDetector?.isSleeping) {
+        this.afkDetector.wakeUp();
+      }
       if (this.action === 'sit') {
         // Stand up on E
         this.action = 'idle';
       } else {
         this.sitNearestSeat();
       }
-      return;
-    }
-
-    if (code === 'KeyV') {
-      this.action = this.action === 'vibe' ? 'idle' : 'vibe';
+      gameEvents.emit('localInput', {});
       return;
     }
 
@@ -247,6 +255,9 @@ export class LocalPlayer {
       code === 'ArrowLeft' ||
       code === 'ArrowRight'
     ) {
+      if (this.afkDetector?.isSleeping) {
+        this.afkDetector.wakeUp();
+      }
       // Movement key cancels any click-to-walk or stroll path
       this.currentPath = [];
       // Movement stands up from sitting
@@ -254,7 +265,11 @@ export class LocalPlayer {
         this.action = 'walk';
       }
       this.keysPressed.add(code);
+      gameEvents.emit('localInput', {});
+      return;
     }
+
+    gameEvents.emit('localInput', {});
   }
 
   public handleKeyUp(code: string): void {
@@ -530,6 +545,13 @@ export class LocalPlayer {
     // Delta time comes from the Pixi ticker, capped at 100 ms
     const cappedDt = Math.min(0.1, Math.max(0, dt));
 
+    // Handle Celebrate state timer
+    if (this.action === 'celebrate') {
+      if (Date.now() >= this.celebrateUntilMs) {
+        this.action = this.previousActionBeforeCelebrate || 'idle';
+      }
+    }
+
     // Handle Sitting State
     if (this.action === 'sit') {
       // Movement input stands up
@@ -737,6 +759,11 @@ export class LocalPlayer {
   }
 
   public celebrate(): void {
+    if (this.action !== 'celebrate') {
+      this.previousActionBeforeCelebrate = this.action;
+    }
+    this.action = 'celebrate';
+    this.celebrateUntilMs = Date.now() + 3000;
     this.avatar?.celebrate();
   }
 

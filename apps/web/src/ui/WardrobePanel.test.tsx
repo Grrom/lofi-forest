@@ -38,6 +38,30 @@ describe('WardrobePanel', () => {
     expect(stored.profile.name).toBe('Hero123456789012');
   });
 
+  it('allows clearing the name input without immediately snapping back to Wanderer while typing, and falls back to Wanderer on blur if empty', () => {
+    render(<WardrobePanel />);
+
+    const input = screen.getByLabelText(/character name/i) as HTMLInputElement;
+
+    // Clear input
+    fireEvent.change(input, { target: { value: '' } });
+    expect(input.value).toBe('');
+
+    // Type a new character
+    fireEvent.change(input, { target: { value: 'A' } });
+    expect(input.value).toBe('A');
+    expect(StorageManager.get().profile.name).toBe('A');
+
+    // Clear input again
+    fireEvent.change(input, { target: { value: '' } });
+    expect(input.value).toBe('');
+
+    // On blur, empty string falls back to Wanderer
+    fireEvent.blur(input);
+    expect(input.value).toBe('Wanderer');
+    expect(StorageManager.get().profile.name).toBe('Wanderer');
+  });
+
   it('selects from 8 palette presets and updates StorageManager immediately', () => {
     render(<WardrobePanel />);
 

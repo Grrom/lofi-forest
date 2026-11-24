@@ -56,10 +56,10 @@ export default function App() {
 
   const handleToggleVibe = () => {
     if (gameEngine?.player) {
+      gameEvents.emit('localInput', {});
       const next = gameEngine.player.action === 'vibe' ? 'idle' : 'vibe';
       gameEngine.player.action = next;
       setIsVibing(next === 'vibe');
-      gameEvents.emit('localInput', {});
     } else {
       setIsVibing((prev) => !prev);
     }

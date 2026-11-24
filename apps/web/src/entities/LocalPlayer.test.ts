@@ -6,6 +6,7 @@ import { PLAYER_SPEED_PX_S, TILE_SIZE, type ZoneId } from '@lofi/shared';
 import type { ParsedTiledMap } from '../engine/tiled';
 import { parseTiledMap } from '../engine/tiled';
 import { generateStarterMap } from '../engine/starterMapData';
+import { StorageManager } from '../systems/StorageManager';
 
 function createMockMap(overrides?: Partial<ParsedTiledMap>): ParsedTiledMap {
   const width = 30;
@@ -471,6 +472,90 @@ describe('LocalPlayer', () => {
     expect(player.avatar).toBeDefined();
     expect(player.container).toBe(player.avatar);
     expect(mockLayers.entityLayer.addChild).toHaveBeenCalledWith(player.avatar);
+
+    player.destroy();
+  });
+
+  it('celebrate() plays bounce animation for 3000 ms through PlayerAvatar and reverts to previous action', () => {
+    const map = createMockMap();
+    const mockLayers: any = {
+      entityLayer: { addChild: vi.fn() },
+      worldUiLayer: { addChild: vi.fn() },
+    };
+
+    const player = new LocalPlayer(map, undefined, mockLayers, {
+      skipPixi: false,
+    });
+
+    const start = 10000;
+    vi.spyOn(Date, 'now').mockReturnValue(start);
+
+    player.celebrate();
+    expect(player.action).toBe('celebrate');
+    expect(player.avatar!.action).toBe('celebrate');
+
+    // Midway through celebrate (1500 ms elapsed)
+    vi.spyOn(Date, 'now').mockReturnValue(start + 1500);
+    player.update(0.016);
+    expect(player.action).toBe('celebrate');
+    expect(player.avatar!.action).toBe('celebrate');
+
+    // After 3000 ms elapsed (+3001 ms), reverts to previous action ('idle')
+    vi.spyOn(Date, 'now').mockReturnValue(start + 3001);
+    player.update(0.016);
+    expect(player.action).toBe('idle');
+    expect(player.avatar!.action).toBe('idle');
+
+    player.destroy();
+  });
+
+  it('AfkDetector does not put player to sleep while auto-stroll is active', () => {
+    vi.useFakeTimers();
+    const map = createMockMap();
+    const player = new LocalPlayer(map, undefined, undefined, {
+      skipPixi: true,
+    });
+
+    player.setAutoStroll(true);
+    expect(player.isAutoStroll).toBe(true);
+    expect(player.afkDetector?.isSuppressed()).toBe(true);
+
+    // Advance past AFK threshold (300 000 ms)
+    vi.advanceTimersByTime(300000);
+    expect(player.afkDetector?.isSleeping).toBe(false);
+    expect(player.action).not.toBe('sleep');
+
+    player.destroy();
+    vi.useRealTimers();
+  });
+
+  it('updates live avatar when StorageManager preferences change', () => {
+    const map = createMockMap();
+    const mockLayers: any = {
+      entityLayer: { addChild: vi.fn() },
+      worldUiLayer: { addChild: vi.fn() },
+    };
+
+    const player = new LocalPlayer(map, undefined, mockLayers, {
+      skipPixi: false,
+    });
+
+    StorageManager.update({
+      profile: {
+        name: 'Robin',
+        outfit: {
+          baseId: 'char_base',
+          hatId: 'beanie',
+          colorHex: '#4a7c59',
+        },
+      },
+      showNames: true,
+    });
+
+    expect(player.avatar!.playerName).toBe('Robin');
+    expect(player.avatar!.nameplate.text).toBe('Robin');
+    expect(player.avatar!.hatLayer.visible).toBe(true);
+    expect(player.avatar!.outfit.colorHex).toBe('#4a7c59');
 
     player.destroy();
   });

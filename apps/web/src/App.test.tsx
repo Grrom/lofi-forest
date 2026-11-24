@@ -132,6 +132,65 @@ describe('apps/web HUD', () => {
     (gameEngine as any).player = undefined;
   });
 
+  it('pressing V key updates Vibe HUD button to ON and toggling back to OFF', () => {
+    const mockMap: any = {
+      width: 10,
+      height: 10,
+      collision: new Array(100).fill(0),
+    };
+    const player = new LocalPlayer(mockMap, undefined, undefined, {
+      skipPixi: true,
+    });
+    gameEngine.player = player;
+
+    render(<App />);
+    const vibeBtn = screen.getByRole('button', { name: /toggle vibe/i });
+    expect(vibeBtn.textContent).toContain('Vibe: OFF');
+
+    // Press V key -> action becomes 'vibe' and HUD button updates to ON
+    act(() => {
+      player.handleKeyDown('KeyV');
+    });
+    expect(player.action).toBe('vibe');
+    expect(vibeBtn.textContent).toContain('Vibe: ON');
+
+    // Press V key again -> action becomes 'idle' and HUD button updates to OFF
+    act(() => {
+      player.handleKeyDown('KeyV');
+    });
+    expect(player.action).toBe('idle');
+    expect(vibeBtn.textContent).toContain('Vibe: OFF');
+
+    (gameEngine as any).player = undefined;
+  });
+
+  it('clicking Vibe HUD button wakes sleeping player and sets action to vibe with label ON', () => {
+    const mockMap: any = {
+      width: 10,
+      height: 10,
+      collision: new Array(100).fill(0),
+    };
+    const player = new LocalPlayer(mockMap, undefined, undefined, {
+      skipPixi: true,
+    });
+    gameEngine.player = player;
+
+    render(<App />);
+    const vibeBtn = screen.getByRole('button', { name: /toggle vibe/i });
+
+    // Put player to sleep via AfkDetector
+    player.action = 'sleep';
+    player.afkDetector!.isSleeping = true;
+    player.afkDetector!.action = 'sleep';
+
+    fireEvent.click(vibeBtn);
+
+    expect(player.action).toBe('vibe');
+    expect(vibeBtn.textContent).toContain('Vibe: ON');
+
+    (gameEngine as any).player = undefined;
+  });
+
   it('renders the Wardrobe HUD button and toggles the Wardrobe dialog', () => {
     render(<App />);
 

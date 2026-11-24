@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StorageManager, usePrefs } from '../systems/StorageManager';
 import { assetLoader } from '../engine/assets/AssetLoader';
-import { HAT_IDS, type HatId } from '@lofi/shared';
+import { HAT_IDS, sanitizeName, type HatId } from '@lofi/shared';
 
 export const PALETTE_PRESETS = [
   '#ffffff', // Classic White
@@ -24,7 +24,9 @@ export function WardrobePanel({ onClose }: WardrobePanelProps) {
 
   // Sync state if prefs change externally
   useEffect(() => {
-    setName(prefs.profile.name);
+    if (sanitizeName(name) !== prefs.profile.name) {
+      setName(prefs.profile.name);
+    }
   }, [prefs.profile.name]);
 
   // Hat options from manifest or shared constants
@@ -39,12 +41,35 @@ export function WardrobePanel({ onClose }: WardrobePanelProps) {
     // Block invalid characters as you type: letters, digits, and spaces only, max 16 chars
     const filtered = raw.replace(/[^a-zA-Z0-9 ]/g, '').slice(0, 16);
     setName(filtered);
-    StorageManager.update((prev) => ({
-      profile: {
-        ...prev.profile,
-        name: filtered,
-      },
-    }));
+    if (filtered.trim().length > 0) {
+      StorageManager.update((prev) => ({
+        profile: {
+          ...prev.profile,
+          name: filtered,
+        },
+      }));
+    }
+  };
+
+  const handleNameBlur = () => {
+    if (name.trim().length === 0) {
+      setName('Wanderer');
+      StorageManager.update((prev) => ({
+        profile: {
+          ...prev.profile,
+          name: 'Wanderer',
+        },
+      }));
+    } else {
+      const sanitized = sanitizeName(name);
+      setName(sanitized);
+      StorageManager.update((prev) => ({
+        profile: {
+          ...prev.profile,
+          name: sanitized,
+        },
+      }));
+    }
   };
 
   const handleSelectHat = (hatId: string) => {
@@ -138,6 +163,7 @@ export function WardrobePanel({ onClose }: WardrobePanelProps) {
           value={name}
           maxLength={16}
           onChange={handleNameChange}
+          onBlur={handleNameBlur}
           aria-label="Character Name"
           placeholder="Wanderer"
           style={{

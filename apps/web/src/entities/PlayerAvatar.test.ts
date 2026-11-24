@@ -86,6 +86,22 @@ describe('PlayerAvatar', () => {
     avatar.destroy();
   });
 
+  it('PlayerAvatar with default StorageManager prefs renders char_base texture and preserves it on setOutfit', () => {
+    // new PlayerAvatar() with default StorageManager prefs (where outfit.baseId === 'default')
+    const avatar = new PlayerAvatar();
+    expect(avatar.baseSprite.texture).toBe(assetLoader.getTextureSync('char_base'));
+
+    // setOutfit with default outfit and new hat should keep char_base texture
+    avatar.setOutfit({
+      ...StorageManager.get().profile.outfit,
+      hatId: 'cap',
+    });
+    expect(avatar.baseSprite.texture).toBe(assetLoader.getTextureSync('char_base'));
+    expect(avatar.hatLayer.visible).toBe(true);
+
+    avatar.destroy();
+  });
+
   it('setFacing() mirrors base, clothing, and hat layers', () => {
     const avatar = new PlayerAvatar();
 

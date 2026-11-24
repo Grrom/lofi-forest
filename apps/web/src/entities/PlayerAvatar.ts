@@ -22,6 +22,10 @@ interface Particle {
   maxLife: number;
 }
 
+export function resolveBaseTextureKey(baseId?: string): string {
+  return !baseId || baseId === 'default' ? 'char_base' : baseId;
+}
+
 /**
  * PlayerAvatar renders a layered, procedurally animated character avatar.
  *
@@ -83,7 +87,7 @@ export class PlayerAvatar extends Container {
     this.addChild(this.shadow);
 
     // 2. Base sprite (char_base, mirrored by facing)
-    const baseTexture = assetLoader.getTextureSync(this.outfit.baseId || 'char_base');
+    const baseTexture = assetLoader.getTextureSync(resolveBaseTextureKey(this.outfit.baseId));
     this.baseSprite = new Sprite(baseTexture);
     this.baseSprite.label = 'baseSprite';
     this.baseSprite.anchor.set(0.5, 1.0);
@@ -179,10 +183,9 @@ export class PlayerAvatar extends Container {
       this.clothingLayer.tint = outfit.colorHex;
     }
 
-    // Update base sprite if baseId provided
-    if (outfit.baseId) {
-      this.baseSprite.texture = assetLoader.getTextureSync(outfit.baseId);
-    }
+    // Update base sprite
+    const baseKey = resolveBaseTextureKey(outfit.baseId);
+    this.baseSprite.texture = assetLoader.getTextureSync(baseKey);
   }
 
   public setAction(action: PlayerAction): void {
