@@ -211,7 +211,7 @@ export class FastTravelSystem {
   }
 
   public getActiveToast(): string | null {
-    if (this.currentToast && Date.now() < this.toastExpiresAtMs) {
+    if (this.currentToast && Date.now() <= this.toastExpiresAtMs) {
       return this.currentToast;
     }
     return null;
@@ -232,10 +232,8 @@ export class FastTravelSystem {
     }
 
     this.toastTimerId = setTimeout(() => {
-      if (Date.now() >= this.toastExpiresAtMs) {
-        this.currentToast = null;
-        this.notifyToastListeners();
-      }
+      this.currentToast = null;
+      this.notifyToastListeners();
     }, durationMs);
 
     gameEvents.emit('toast', { message, durationMs });
@@ -314,11 +312,16 @@ export class FastTravelSystem {
    */
   public teleportToLandmark(
     landmarkId: string,
-    options?: { immediate?: boolean; onComplete?: () => void }
+    options?: { immediate?: boolean; onComplete?: () => void; bypassUnlock?: boolean }
   ): Promise<boolean> | boolean {
     const lm = this.getLandmark(landmarkId);
     if (!lm) {
       console.warn(`[FastTravelSystem] Landmark "${landmarkId}" not found.`);
+      return false;
+    }
+
+    if (!options?.bypassUnlock && !this.isUnlocked(lm.id)) {
+      console.warn(`[FastTravelSystem] Landmark "${lm.id}" is locked.`);
       return false;
     }
 

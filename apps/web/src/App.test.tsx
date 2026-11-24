@@ -4,6 +4,9 @@ import App from './App';
 import { gameEngine } from './engine/game';
 import { LocalPlayer } from './entities/LocalPlayer';
 import { defaultFastTravelSystem } from './systems/FastTravelSystem';
+import { generateStarterMap } from './engine/starterMapData';
+import { parseTiledMap } from './engine/tiled';
+import { resetStorageManager } from './systems/StorageManager';
 
 describe('apps/web HUD', () => {
   it('renders the HUD heading', () => {
@@ -138,25 +141,55 @@ describe('apps/web HUD', () => {
   });
 
   it('displays the discovery toast for 3 seconds', () => {
-    render(<App />);
-
-    // Before discovery: no toast
-    expect(screen.queryByRole('status')).toBeNull();
-
-    // Trigger discovery toast
-    act(() => {
-      defaultFastTravelSystem.showToast('Discovered: Lakeside Dock', 3000);
-    });
-
-    // Toast appears
-    const toast = screen.getByRole('status');
-    expect(toast).toBeDefined();
-    expect(toast.textContent).toBe('Discovered: Lakeside Dock');
-
-    // Clean up
-    act(() => {
+    vi.useFakeTimers();
+    try {
+      localStorage.clear();
+      resetStorageManager();
       defaultFastTravelSystem.clearToast();
-    });
-    expect(screen.queryByRole('status')).toBeNull();
+
+      const rawMap = generateStarterMap();
+      const starterMap = parseTiledMap(rawMap);
+      defaultFastTravelSystem.setMap(starterMap);
+
+      const player = new LocalPlayer(starterMap, undefined, undefined, {
+        skipPixi: true,
+        fastTravelSystem: defaultFastTravelSystem,
+      });
+      defaultFastTravelSystem.setPlayer(player);
+      gameEngine.player = player;
+
+      render(<App />);
+
+      // Before discovery: no toast
+      expect(screen.queryByRole('status')).toBeNull();
+
+      // Find lakeside_dock landmark
+      const dock = starterMap.landmarks.find((l) => l.id === 'lakeside_dock')!;
+      expect(dock).toBeDefined();
+
+      // Move player into lakeside_dock radius
+      player.x = dock.x;
+      player.y = dock.y;
+
+      act(() => {
+        player.update(0.016);
+      });
+
+      // Assert that getByRole('status') has text 'Discovered: Lakeside Dock'
+      const toast = screen.getByRole('status');
+      expect(toast).toBeDefined();
+      expect(toast.textContent).toBe('Discovered: Lakeside Dock');
+
+      // Then advance timers by 3000 ms
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+
+      // Assert the status element is gone
+      expect(screen.queryByRole('status')).toBeNull();
+    } finally {
+      (gameEngine as any).player = undefined;
+      vi.useRealTimers();
+    }
   });
 });

@@ -120,16 +120,15 @@ export class GameEngine {
     );
 
     // 8. LocalPlayer setup (camera follows player)
+    defaultFastTravelSystem.setMap(this.parsedMap);
     this.player = new LocalPlayer(
       this.parsedMap,
       this.camera,
       this.layers
     );
-    this.fastTravelSystem = this.player.fastTravelSystem || new FastTravelSystem(this.parsedMap);
-    this.fastTravelSystem.setPlayer(this.player);
-    this.player.fastTravelSystem = this.fastTravelSystem;
-    defaultFastTravelSystem.setMap(this.parsedMap);
     defaultFastTravelSystem.setPlayer(this.player);
+    this.fastTravelSystem = defaultFastTravelSystem;
+    this.player.fastTravelSystem = defaultFastTravelSystem;
 
     this.currentZone = this.player.zone;
     this.atmosphere.setZone(this.player.zone);

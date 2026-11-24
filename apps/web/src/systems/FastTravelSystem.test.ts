@@ -268,6 +268,12 @@ describe('FastTravelSystem', () => {
       emittedEvents.push({ event: 'zoneChanged', payload });
     });
 
+    // Pub landmark is locked initially; travel must be rejected
+    expect(player.teleportToLandmark('cozy_pub')).toBe(false);
+
+    // Unlock pub landmark so it can be fast-traveled to
+    player.fastTravelSystem?.unlockLandmark('cozy_pub');
+
     // Teleport from forest to pub landmark
     await player.teleportToLandmark('cozy_pub');
 
@@ -289,12 +295,26 @@ describe('FastTravelSystem', () => {
       skipPixi: true,
     });
 
+    // Unlock pub landmark
+    player.fastTravelSystem?.unlockLandmark('cozy_pub');
+
     const teleportSpy = vi.fn();
     gameEvents.on('teleported', teleportSpy);
 
     await player.teleportToLandmark('pub');
     expect(teleportSpy).toHaveBeenCalled();
     expect(player.zone).toBe('pub');
+  });
+
+  it('teleportToLandmark rejects locked landmarks and returns false', () => {
+    const map = createMockMap();
+    const storage = new StorageManager('test-storage-ft-locked');
+    const fastTravel = new FastTravelSystem(map, storage);
+
+    // lakeside_dock is locked
+    expect(fastTravel.isUnlocked('lakeside_dock')).toBe(false);
+    const result = fastTravel.teleportToLandmark('lakeside_dock');
+    expect(result).toBe(false);
   });
 
   it('teleportNear(x, y) helper moves player to nearest open tile next to point', () => {

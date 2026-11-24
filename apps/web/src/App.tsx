@@ -37,9 +37,20 @@ export default function App() {
       setToast(msg);
     });
 
+    let toastTimer: any = null;
+    const unsubGameToast = gameEvents.on('toast', ({ message, durationMs = 3000 }) => {
+      setToast(message);
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        setToast(null);
+      }, durationMs);
+    });
+
     return () => {
       unsubInput();
       unsubToast();
+      unsubGameToast();
+      if (toastTimer) clearTimeout(toastTimer);
     };
   }, []);
 

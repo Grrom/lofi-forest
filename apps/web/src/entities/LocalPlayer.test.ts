@@ -504,4 +504,59 @@ describe('LocalPlayer', () => {
 
     await teleportPromise;
   });
+
+  it('handles re-entrant teleport calls smoothly when invoked twice in rapid succession (e.g. double click)', async () => {
+    vi.useFakeTimers();
+    try {
+      const rawMap = generateStarterMap();
+      const starterMap = parseTiledMap(rawMap);
+      const camera = new Camera();
+      camera.updateViewport(800, 600);
+
+      const mockEntityLayer = {
+        addChild: vi.fn(),
+        removeChild: vi.fn(),
+      } as any;
+      const mockLayers = {
+        entityLayer: mockEntityLayer,
+        worldUiLayer: { addChild: vi.fn(), removeChild: vi.fn() },
+      } as any;
+
+      const player = new LocalPlayer(starterMap, camera, mockLayers, {
+        skipPixi: true,
+      });
+      player.container = {
+        alpha: 1,
+        position: { set: vi.fn() },
+      } as any;
+
+      const dest1X = 100;
+      const dest1Y = 100;
+      const dest2X = 200;
+      const dest2Y = 200;
+
+      const p1 = player.teleport(dest1X, dest1Y);
+
+      // Advance 100 ms (during fade_out phase)
+      vi.advanceTimersByTime(100);
+
+      // Second teleport call while first transition is in progress
+      const p2 = player.teleport(dest2X, dest2Y);
+
+      // Verify p2 returns the in-flight promise and does not overwrite destination
+      expect(player.teleportTransition?.destX).toBe(dest1X);
+      expect(player.teleportTransition?.destY).toBe(dest1Y);
+
+      // Advance remaining time to complete teleport
+      vi.advanceTimersByTime(500);
+
+      await Promise.all([p1, p2]);
+
+      expect(player.x).toBe(dest1X);
+      expect(player.y).toBe(dest1Y);
+      expect(player.container!.alpha).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

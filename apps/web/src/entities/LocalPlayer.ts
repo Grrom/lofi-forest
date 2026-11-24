@@ -17,7 +17,7 @@ import {
   PLAYER_COLLISION_RADIUS,
 } from '../systems/collision';
 import { findPath } from '../systems/pathfinding';
-import { FastTravelSystem } from '../systems/FastTravelSystem';
+import { FastTravelSystem, defaultFastTravelSystem } from '../systems/FastTravelSystem';
 import { spawnParticleBurst } from '../engine/particles';
 
 export interface LocalPlayerOptions {
@@ -25,6 +25,7 @@ export interface LocalPlayerOptions {
   initialY?: number;
   initialZone?: ZoneId;
   skipPixi?: boolean;
+  fastTravelSystem?: FastTravelSystem;
 }
 
 export function isInputFocused(): boolean {
@@ -37,6 +38,18 @@ export function isInputFocused(): boolean {
     tag === 'textarea' ||
     (active as HTMLElement).isContentEditable
   );
+}
+
+export interface TeleportTransition {
+  phase: 'fade_out' | 'fade_in';
+  startTime: number;
+  durationMs: number;
+  destX: number;
+  destY: number;
+  fadeStartTime: number;
+  midpointTimeoutId?: any;
+  finishTimeoutId?: any;
+  onComplete?: () => void;
 }
 
 export class LocalPlayer {
@@ -60,15 +73,8 @@ export class LocalPlayer {
   public collisionMap: CollisionMap;
   public fastTravelSystem?: FastTravelSystem;
 
-  public teleportTransition: {
-    phase: 'fade_out' | 'fade_in';
-    startTime: number;
-    durationMs: number;
-    destX: number;
-    destY: number;
-    fadeStartTime: number;
-    onComplete?: () => void;
-  } | null = null;
+  public teleportTransition: TeleportTransition | null = null;
+  private inFlightTeleportPromise: Promise<void> | null = null;
 
   private keysPressed = new Set<string>();
   private activeSeat: ParsedSeat | null = null;
@@ -114,7 +120,8 @@ export class LocalPlayer {
       this.zone = this.getZoneAt(this.x, this.y) || 'forest';
     }
 
-    this.fastTravelSystem = new FastTravelSystem(this.map);
+    this.fastTravelSystem = options?.fastTravelSystem || defaultFastTravelSystem;
+    this.fastTravelSystem.setMap(this.map);
     this.fastTravelSystem.setPlayer(this);
 
     // Setup Pixi containers if not skipped
@@ -439,6 +446,16 @@ export class LocalPlayer {
     const isHeadless = !this.layers || options?.immediate;
 
     if (isHeadless) {
+      if (this.teleportTransition) {
+        if (this.teleportTransition.midpointTimeoutId) {
+          clearTimeout(this.teleportTransition.midpointTimeoutId);
+        }
+        if (this.teleportTransition.finishTimeoutId) {
+          clearTimeout(this.teleportTransition.finishTimeoutId);
+        }
+        this.teleportTransition = null;
+      }
+      this.inFlightTeleportPromise = null;
       this.x = destX;
       this.y = destY;
       this.currentPath = [];
@@ -450,7 +467,11 @@ export class LocalPlayer {
       return Promise.resolve();
     }
 
-    return new Promise<void>((resolve) => {
+    if (this.teleportTransition) {
+      return this.inFlightTeleportPromise || Promise.resolve();
+    }
+
+    const promise = new Promise<void>((resolve) => {
       this.currentPath = [];
 
       // 1. Particle burst at the player
@@ -460,7 +481,7 @@ export class LocalPlayer {
 
       // 2. Alpha fade 1 -> 0 over 250 ms
       const startTime = Date.now();
-      this.teleportTransition = {
+      const transition: TeleportTransition = {
         phase: 'fade_out',
         startTime,
         durationMs: 250,
@@ -468,34 +489,45 @@ export class LocalPlayer {
         destY,
         fadeStartTime: 0,
         onComplete: () => {
+          this.inFlightTeleportPromise = null;
           options?.onComplete?.();
           resolve();
         },
       };
+      this.teleportTransition = transition;
 
       // Fallback timeouts to ensure completion if tab is backgrounded
-      setTimeout(() => {
+      transition.midpointTimeoutId = setTimeout(() => {
         if (
           this.teleportTransition &&
+          this.teleportTransition === transition &&
           this.teleportTransition.phase === 'fade_out'
         ) {
           this.executeTeleportMidpoint();
         }
       }, 260);
 
-      setTimeout(() => {
+      transition.finishTimeoutId = setTimeout(() => {
         if (
           this.teleportTransition &&
+          this.teleportTransition === transition &&
           this.teleportTransition.phase === 'fade_in'
         ) {
           this.finishTeleport();
         }
       }, 520);
     });
+
+    this.inFlightTeleportPromise = promise;
+    return promise;
   }
 
   public executeTeleportMidpoint(): void {
     if (!this.teleportTransition || this.teleportTransition.phase !== 'fade_out') return;
+    if (this.teleportTransition.midpointTimeoutId) {
+      clearTimeout(this.teleportTransition.midpointTimeoutId);
+      this.teleportTransition.midpointTimeoutId = null;
+    }
     this.x = this.teleportTransition.destX;
     this.y = this.teleportTransition.destY;
     this.camera?.lookAt(this.x, this.y);
@@ -515,7 +547,14 @@ export class LocalPlayer {
     const destX = this.teleportTransition.destX;
     const destY = this.teleportTransition.destY;
     const onComplete = this.teleportTransition.onComplete;
+    if (this.teleportTransition.midpointTimeoutId) {
+      clearTimeout(this.teleportTransition.midpointTimeoutId);
+    }
+    if (this.teleportTransition.finishTimeoutId) {
+      clearTimeout(this.teleportTransition.finishTimeoutId);
+    }
     this.teleportTransition = null;
+    this.inFlightTeleportPromise = null;
 
     if (this.container) {
       this.container.alpha = 1;
@@ -877,6 +916,17 @@ export class LocalPlayer {
   }
 
   public destroy(): void {
+    if (this.teleportTransition) {
+      if (this.teleportTransition.midpointTimeoutId) {
+        clearTimeout(this.teleportTransition.midpointTimeoutId);
+      }
+      if (this.teleportTransition.finishTimeoutId) {
+        clearTimeout(this.teleportTransition.finishTimeoutId);
+      }
+      this.teleportTransition = null;
+    }
+    this.inFlightTeleportPromise = null;
+
     if (typeof window !== 'undefined') {
       if (this.onKeyDownBound) {
         window.removeEventListener('keydown', this.onKeyDownBound);
