@@ -216,7 +216,8 @@ describe('public-server integration tests', () => {
       expect(aliceState).toBeDefined();
       expect(aliceState!.x).toBe(WORLD_WIDTH_PX);
       expect(aliceState!.y).toBe(0);
-      expect(aliceState!.name).toBe('Alice');
+      expect(aliceState!.name).toBe(w1.name);
+      expect(aliceState!.name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+\d?$/);
       expect(aliceState!.zone).toBe('forest');
       expect(aliceState!.action).toBe('walk');
     } finally {
@@ -640,6 +641,93 @@ describe('public-server integration tests', () => {
       });
       expect(closed).toBe(true);
     } finally {
+      await instance.close();
+    }
+  });
+
+  // Acceptance criterion:
+  // Server test: a hello with name "badword" results in a stored and broadcast name matching /^[A-Z][a-z]+ [A-Z][a-z]+\d?$/, never the sent name.
+  it('Server test: a hello with name "badword" results in a stored and broadcast name matching /^[A-Z][a-z]+ [A-Z][a-z]+\d?$/, never the sent name', async () => {
+    const instance = await startServer();
+    const clients: TestClient[] = [];
+    try {
+      const c1 = await createTestClient(instance.port, '/ws');
+      const c2 = await createTestClient(instance.port, '/ws');
+      clients.push(c1, c2);
+
+      c1.send({
+        t: 'hello',
+        name: 'badword',
+        outfit: { baseId: 'b1', hatId: 'h1', colorHex: '#ff0000' },
+      });
+      const w1 = await c1.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
+      expect(w1.t).toBe('welcome');
+      expect(w1.name).toBeDefined();
+      expect(w1.name).not.toBe('badword');
+      expect(w1.name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+\d?$/);
+      expect(w1.name!.length).toBeLessThanOrEqual(16);
+
+      c2.send({
+        t: 'hello',
+        name: 'other',
+        outfit: { baseId: 'b2', hatId: 'h2', colorHex: '#00ff00' },
+      });
+      const w2 = await c2.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
+      expect(w2.t).toBe('welcome');
+
+      // c1 sends state
+      c1.send({
+        t: 'state',
+        x: 100,
+        y: 100,
+        zone: 'forest',
+        facing: 'down',
+        action: 'idle',
+        pomo: 'none',
+      });
+
+      // c2 receives snapshot
+      const snap = await c2.waitForMessage<ServerSnapMsg>((m: any) => m.t === 'snap');
+      const p1State = snap.players.find((p) => p.id === w1.id);
+      expect(p1State).toBeDefined();
+      expect(p1State!.name).not.toBe('badword');
+      expect(p1State!.name).toBe(w1.name);
+      expect(p1State!.name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+\d?$/);
+      expect(p1State!.name.length).toBeLessThanOrEqual(16);
+    } finally {
+      clients.forEach((c) => c.terminate());
+      await instance.close();
+    }
+  });
+
+  // Acceptance criterion:
+  // Server test: two players never share a name at the same time.
+  it('Server test: two players never share a name at the same time', async () => {
+    const instance = await startServer(0, '127.0.0.1', { maxPlayers: 30, maxConnPerIp: 30 });
+    const clients: TestClient[] = [];
+    try {
+      const numPlayers = 15;
+      const assignedNames: string[] = [];
+
+      for (let i = 0; i < numPlayers; i++) {
+        const client = await createTestClient(instance.port, '/ws');
+        clients.push(client);
+        client.send({
+          t: 'hello',
+          name: 'Player',
+          outfit: { baseId: 'b', hatId: 'none', colorHex: '#fff' },
+        });
+        const welcome = await client.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
+        expect(welcome.name).toBeDefined();
+        expect(welcome.name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+\d?$/);
+        assignedNames.push(welcome.name!);
+      }
+
+      // Check all assigned names are strictly unique
+      const nameSet = new Set(assignedNames);
+      expect(nameSet.size).toBe(numPlayers);
+    } finally {
+      clients.forEach((c) => c.terminate());
       await instance.close();
     }
   });

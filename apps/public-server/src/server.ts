@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { WebSocket, WebSocketServer } from 'ws';
 import {
   clampToWorld,
+  generateLobbyName,
   MAX_FRAME_BYTES,
   parseClientMessage,
   sanitizeName,
@@ -355,7 +356,11 @@ export function createServer(options?: Partial<ServerConfig>) {
           }
 
           const playerId = crypto.randomUUID();
-          const name = sanitizeName(msg.name);
+          const existingNames = new Set<string>();
+          for (const p of players.values()) {
+            if (p.name) existingNames.add(p.name);
+          }
+          const name = generateLobbyName(existingNames);
           playerSession = {
             id: playerId,
             name,
@@ -369,6 +374,7 @@ export function createServer(options?: Partial<ServerConfig>) {
           const welcome: ServerWelcomeMsg = {
             t: 'welcome',
             id: playerId,
+            name,
             players: getActivePlayersState(),
           };
           ws.send(JSON.stringify(welcome));

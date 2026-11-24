@@ -18,8 +18,9 @@ import { WardrobePanel } from './ui/WardrobePanel';
 import { EmoteBar } from './components/EmoteBar';
 import { PomoCard } from './components/PomoCard';
 import { RosterPanel } from './components/RosterPanel';
-import { createTransport } from './net/createTransport';
+import { createTransport, parseRoomParam } from './net/createTransport';
 import type { TransportStatus } from './net/TransportAdapter';
+import { PUBLIC_ROOM_CODE } from '@lofi/shared';
 
 export default function App() {
   const [isAutoStroll, setIsAutoStroll] = useState(false);
@@ -30,6 +31,15 @@ export default function App() {
   const [isVibing, setIsVibing] = useState(false);
   const [isWardrobeOpen, setIsWardrobeOpen] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<TransportStatus>('connected');
+  const [assignedName, setAssignedName] = useState<string | null>(
+    () => (gameEngine?.transport as any)?.assignedName ?? null
+  );
+  const [isPublic, setIsPublic] = useState<boolean>(() => {
+    return (
+      parseRoomParam() === PUBLIC_ROOM_CODE ||
+      gameEngine?.transport?.mode === 'public'
+    );
+  });
 
   useEffect(() => {
     // Sync Auto-Stroll and Vibe states on manual input
@@ -60,11 +70,17 @@ export default function App() {
       setConnectionStatus(status);
     });
 
+    const unsubAssigned = gameEvents.on('assignedNameChanged', ({ name }) => {
+      setAssignedName(name);
+      setIsPublic(true);
+    });
+
     return () => {
       unsubInput();
       unsubToast();
       unsubGameToast();
       unsubStatus();
+      unsubAssigned();
       if (toastTimer) clearTimeout(toastTimer);
     };
   }, []);
@@ -180,6 +196,24 @@ export default function App() {
           lofi-forest
         </h1>
         <StatusPill />
+        {isPublic && assignedName && (
+          <div
+            className="hud-player-name"
+            aria-label={`Player Name: ${assignedName}`}
+            style={{
+              padding: '3px 8px',
+              backgroundColor: '#1b2a1e',
+              border: '1px solid #4a7c59',
+              borderRadius: '12px',
+              fontFamily: 'monospace',
+              fontSize: '11px',
+              color: '#fffaeb',
+              fontWeight: 'bold',
+            }}
+          >
+            {assignedName}
+          </div>
+        )}
         {connectionStatus === 'room_full' && (
           <button
             type="button"
@@ -364,7 +398,13 @@ export default function App() {
           })}
         </div>
       </div>
-      {isWardrobeOpen && <WardrobePanel onClose={() => setIsWardrobeOpen(false)} />}
+      {isWardrobeOpen && (
+        <WardrobePanel
+          isLobby={isPublic}
+          serverName={assignedName}
+          onClose={() => setIsWardrobeOpen(false)}
+        />
+      )}
     </div>
     <EmoteBar />
     </>
