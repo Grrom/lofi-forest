@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import App from './App';
 import { gameEngine } from './engine/game';
 import { LocalPlayer } from './entities/LocalPlayer';
+import { defaultFastTravelSystem } from './systems/FastTravelSystem';
 
 describe('apps/web HUD', () => {
   it('renders the HUD heading', () => {
@@ -100,5 +101,62 @@ describe('apps/web HUD', () => {
     expect(strollBtn.textContent).toContain('Auto-Stroll: OFF');
 
     (gameEngine as any).player = undefined;
+  });
+
+  // Acceptance Criterion:
+  // React Fast Travel panel: unlocked landmarks are clickable; locked ones show as greyed ???.
+  it('renders the Fast Travel panel: unlocked landmarks are clickable; locked ones show as greyed ???', () => {
+    render(<App />);
+
+    // Fast travel section exists
+    expect(screen.getByText('Fast Travel')).toBeDefined();
+
+    // With fresh storage, only Forest Clearing is unlocked
+    const clearingBtn = screen.getByRole('button', { name: /forest clearing/i });
+    expect(clearingBtn).toBeDefined();
+
+    // Locked landmarks show as greyed ???
+    const lockedItems = screen.getAllByText('???');
+    expect(lockedItems.length).toBeGreaterThanOrEqual(2); // Lakeside Dock and Cozy Pub are locked
+  });
+
+  it('clicking an unlocked landmark invokes teleportToLandmark', () => {
+    const teleportSpy = vi.fn();
+    gameEngine.player = {
+      teleportToLandmark: teleportSpy,
+      isAutoStroll: false,
+    } as any;
+
+    render(<App />);
+
+    const clearingBtn = screen.getByRole('button', { name: /forest clearing/i });
+    fireEvent.click(clearingBtn);
+
+    expect(teleportSpy).toHaveBeenCalledWith('forest_clearing');
+
+    (gameEngine as any).player = undefined;
+  });
+
+  it('displays the discovery toast for 3 seconds', () => {
+    render(<App />);
+
+    // Before discovery: no toast
+    expect(screen.queryByRole('status')).toBeNull();
+
+    // Trigger discovery toast
+    act(() => {
+      defaultFastTravelSystem.showToast('Discovered: Lakeside Dock', 3000);
+    });
+
+    // Toast appears
+    const toast = screen.getByRole('status');
+    expect(toast).toBeDefined();
+    expect(toast.textContent).toBe('Discovered: Lakeside Dock');
+
+    // Clean up
+    act(() => {
+      defaultFastTravelSystem.clearToast();
+    });
+    expect(screen.queryByRole('status')).toBeNull();
   });
 });

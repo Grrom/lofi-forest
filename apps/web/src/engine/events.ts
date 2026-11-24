@@ -6,6 +6,7 @@ export interface GameEventPayloads {
   pomoPhaseChanged: { phase: PomoBadge; endsAtMs: number };
   localEmote: { emote: EmoteId };
   localInput: Record<string, never>;
+  toast: { message: string; durationMs?: number };
 }
 
 export type GameEventName = keyof GameEventPayloads;

@@ -272,3 +272,5 @@ export function findPath(
 
   return null;
 }
+
+export { findOpenTileNear, type OpenTile } from './FastTravelSystem';

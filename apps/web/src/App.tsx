@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { StorageManager, type ZoomSetting } from './engine/storage';
+import { usePrefs } from './systems/StorageManager';
+import {
+  defaultFastTravelSystem,
+  DEFAULT_LANDMARKS,
+  type Landmark,
+} from './systems/FastTravelSystem';
 import { gameEngine } from './engine/game';
 import { gameEvents } from './engine/events';
 
@@ -8,6 +14,10 @@ export default function App() {
     StorageManager.getZoom()
   );
   const [isAutoStroll, setIsAutoStroll] = useState(false);
+  const prefs = usePrefs();
+  const [toast, setToast] = useState<string | null>(() =>
+    defaultFastTravelSystem.getActiveToast()
+  );
 
   useEffect(() => {
     // Sync current setting on mount
@@ -22,8 +32,14 @@ export default function App() {
       }
     });
 
+    // Subscribe to fast travel discovery toasts
+    const unsubToast = defaultFastTravelSystem.subscribeToast((msg) => {
+      setToast(msg);
+    });
+
     return () => {
       unsubInput();
+      unsubToast();
     };
   }, []);
 
@@ -50,9 +66,50 @@ export default function App() {
     }
   };
 
+  const handleFastTravel = (landmarkId: string) => {
+    if (gameEngine?.player) {
+      gameEngine.player.teleportToLandmark(landmarkId);
+    } else {
+      defaultFastTravelSystem.teleportToLandmark(landmarkId);
+    }
+  };
+
+  const landmarks: Landmark[] =
+    gameEngine?.parsedMap?.landmarks?.length
+      ? gameEngine.parsedMap.landmarks
+      : defaultFastTravelSystem.landmarks?.length
+        ? defaultFastTravelSystem.landmarks
+        : DEFAULT_LANDMARKS;
+
   return (
     <div className="hud">
       <h1>lofi-forest</h1>
+
+      {toast && (
+        <div
+          className="hud-toast"
+          role="status"
+          style={{
+            position: 'fixed',
+            top: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#1b2a1e',
+            color: '#fffaeb',
+            border: '1px solid #4a7c59',
+            borderRadius: '4px',
+            padding: '8px 16px',
+            fontFamily: 'monospace',
+            fontSize: '13px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            zIndex: 9999,
+            pointerEvents: 'none',
+          }}
+        >
+          {toast}
+        </div>
+      )}
+
       <div className="hud-controls" style={{ marginTop: '8px' }}>
         <button
           type="button"
@@ -85,6 +142,73 @@ export default function App() {
         >
           Auto-Stroll: {isAutoStroll ? 'ON' : 'OFF'}
         </button>
+      </div>
+
+      <div className="hud-fast-travel" style={{ marginTop: '12px' }}>
+        <div
+          style={{
+            fontSize: '12px',
+            fontWeight: 'bold',
+            fontFamily: 'monospace',
+            marginBottom: '6px',
+            color: '#fffaeb',
+          }}
+        >
+          Fast Travel
+        </div>
+        <div
+          className="fast-travel-list"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+            maxWidth: '160px',
+          }}
+        >
+          {landmarks.map((lm) => {
+            const isUnlocked = prefs.unlockedLandmarks.includes(lm.id);
+            return isUnlocked ? (
+              <button
+                key={lm.id}
+                type="button"
+                className="hud-landmark-btn unlocked"
+                onClick={() => handleFastTravel(lm.id)}
+                aria-label={lm.label}
+                style={{
+                  padding: '4px 8px',
+                  fontFamily: 'monospace',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  backgroundColor: '#2b3f2f',
+                  color: '#fffaeb',
+                  border: '1px solid #4a7c59',
+                  borderRadius: '3px',
+                }}
+              >
+                {lm.label}
+              </button>
+            ) : (
+              <div
+                key={lm.id}
+                className="hud-landmark-btn locked"
+                aria-label="Locked landmark"
+                style={{
+                  padding: '4px 8px',
+                  fontFamily: 'monospace',
+                  fontSize: '11px',
+                  color: '#888888',
+                  backgroundColor: 'rgba(20, 20, 20, 0.4)',
+                  border: '1px dashed #555555',
+                  borderRadius: '3px',
+                  userSelect: 'none',
+                }}
+              >
+                ???
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

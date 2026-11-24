@@ -12,6 +12,8 @@ import {
 import { Atmosphere } from './atmosphere';
 import { gameEvents } from './events';
 import { LocalPlayer } from '../entities/LocalPlayer';
+import { FastTravelSystem, defaultFastTravelSystem } from '../systems/FastTravelSystem';
+import { updateActiveBursts, clearActiveBursts } from './particles';
 import type { AssetManifest, ZoneId } from '@lofi/shared';
 
 export class GameEngine {
@@ -23,6 +25,7 @@ export class GameEngine {
   public mapRenderer!: TiledMapRenderer;
   public atmosphere!: Atmosphere;
   public player!: LocalPlayer;
+  public fastTravelSystem!: FastTravelSystem;
   public isDebug = false;
 
   private currentZone: ZoneId = 'forest';
@@ -122,6 +125,12 @@ export class GameEngine {
       this.camera,
       this.layers
     );
+    this.fastTravelSystem = this.player.fastTravelSystem || new FastTravelSystem(this.parsedMap);
+    this.fastTravelSystem.setPlayer(this.player);
+    this.player.fastTravelSystem = this.fastTravelSystem;
+    defaultFastTravelSystem.setMap(this.parsedMap);
+    defaultFastTravelSystem.setPlayer(this.player);
+
     this.currentZone = this.player.zone;
     this.atmosphere.setZone(this.player.zone);
 
@@ -247,6 +256,9 @@ export class GameEngine {
 
     // Update atmosphere (glow flicker, pulse, rain, vignette)
     this.atmosphere?.update(this.camera, now);
+
+    // Update active particle bursts
+    updateActiveBursts(now);
   }
 
   public destroy(): void {
@@ -259,6 +271,7 @@ export class GameEngine {
       this.updateIntervalId = null;
     }
     this.player?.destroy();
+    clearActiveBursts();
     this.app?.destroy(true, { children: true, texture: false });
   }
 }

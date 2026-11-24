@@ -17,6 +17,8 @@ import {
   PLAYER_COLLISION_RADIUS,
 } from '../systems/collision';
 import { findPath } from '../systems/pathfinding';
+import { FastTravelSystem } from '../systems/FastTravelSystem';
+import { spawnParticleBurst } from '../engine/particles';
 
 export interface LocalPlayerOptions {
   initialX?: number;
@@ -56,6 +58,17 @@ export class LocalPlayer {
   public camera?: Camera;
   public layers?: WorldLayers;
   public collisionMap: CollisionMap;
+  public fastTravelSystem?: FastTravelSystem;
+
+  public teleportTransition: {
+    phase: 'fade_out' | 'fade_in';
+    startTime: number;
+    durationMs: number;
+    destX: number;
+    destY: number;
+    fadeStartTime: number;
+    onComplete?: () => void;
+  } | null = null;
 
   private keysPressed = new Set<string>();
   private activeSeat: ParsedSeat | null = null;
@@ -100,6 +113,9 @@ export class LocalPlayer {
     } else {
       this.zone = this.getZoneAt(this.x, this.y) || 'forest';
     }
+
+    this.fastTravelSystem = new FastTravelSystem(this.map);
+    this.fastTravelSystem.setPlayer(this);
 
     // Setup Pixi containers if not skipped
     if (!options?.skipPixi && layers) {
@@ -406,6 +422,135 @@ export class LocalPlayer {
     this.checkZoneChange();
   }
 
+  /**
+   * Teleports the player with the specified transition:
+   * 1. firefly/leaf particle burst at player
+   * 2. alpha fades 1 -> 0 over 250 ms
+   * 3. move the player and snap the camera
+   * 4. burst at destination, alpha back to 1 over 250 ms
+   * 5. emit GameEvents.teleported {x, y}
+   * The zone is re-evaluated after teleport.
+   */
+  public teleport(
+    destX: number,
+    destY: number,
+    options?: { immediate?: boolean; onComplete?: () => void }
+  ): Promise<void> {
+    const isHeadless = !this.layers || options?.immediate;
+
+    if (isHeadless) {
+      this.x = destX;
+      this.y = destY;
+      this.currentPath = [];
+      this.camera?.lookAt(this.x, this.y);
+      this.syncVisuals();
+      gameEvents.emit('teleported', { x: destX, y: destY });
+      this.checkZoneChange();
+      options?.onComplete?.();
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      this.currentPath = [];
+
+      // 1. Particle burst at the player
+      if (this.layers) {
+        spawnParticleBurst(this.x, this.y, this.layers.entityLayer);
+      }
+
+      // 2. Alpha fade 1 -> 0 over 250 ms
+      const startTime = Date.now();
+      this.teleportTransition = {
+        phase: 'fade_out',
+        startTime,
+        durationMs: 250,
+        destX,
+        destY,
+        fadeStartTime: 0,
+        onComplete: () => {
+          options?.onComplete?.();
+          resolve();
+        },
+      };
+
+      // Fallback timeouts to ensure completion if tab is backgrounded
+      setTimeout(() => {
+        if (
+          this.teleportTransition &&
+          this.teleportTransition.phase === 'fade_out'
+        ) {
+          this.executeTeleportMidpoint();
+        }
+      }, 260);
+
+      setTimeout(() => {
+        if (
+          this.teleportTransition &&
+          this.teleportTransition.phase === 'fade_in'
+        ) {
+          this.finishTeleport();
+        }
+      }, 520);
+    });
+  }
+
+  public executeTeleportMidpoint(): void {
+    if (!this.teleportTransition || this.teleportTransition.phase !== 'fade_out') return;
+    this.x = this.teleportTransition.destX;
+    this.y = this.teleportTransition.destY;
+    this.camera?.lookAt(this.x, this.y);
+    this.syncVisuals();
+
+    // 4. Burst at destination
+    if (this.layers) {
+      spawnParticleBurst(this.x, this.y, this.layers.entityLayer);
+    }
+
+    this.teleportTransition.phase = 'fade_in';
+    this.teleportTransition.fadeStartTime = Date.now();
+  }
+
+  public finishTeleport(): void {
+    if (!this.teleportTransition) return;
+    const destX = this.teleportTransition.destX;
+    const destY = this.teleportTransition.destY;
+    const onComplete = this.teleportTransition.onComplete;
+    this.teleportTransition = null;
+
+    if (this.container) {
+      this.container.alpha = 1;
+    }
+
+    // 5. Emit GameEvents.teleported {x, y}
+    gameEvents.emit('teleported', { x: destX, y: destY });
+
+    // Zone re-evaluation after teleport
+    this.checkZoneChange();
+
+    onComplete?.();
+  }
+
+  public teleportToLandmark(
+    landmarkId: string,
+    options?: { immediate?: boolean; onComplete?: () => void }
+  ): Promise<boolean> | boolean {
+    if (this.fastTravelSystem) {
+      return this.fastTravelSystem.teleportToLandmark(landmarkId, options);
+    }
+    return false;
+  }
+
+  public teleportNear(
+    x: number,
+    y: number,
+    options?: { immediate?: boolean; onComplete?: () => void }
+  ): boolean {
+    if (this.fastTravelSystem) {
+      return this.fastTravelSystem.teleportNear(x, y, options);
+    }
+    return false;
+  }
+
   public getZoneAt(x: number, y: number): ZoneId | null {
     if (!this.map.zoneTriggers) return null;
     for (const trigger of this.map.zoneTriggers) {
@@ -502,6 +647,32 @@ export class LocalPlayer {
   public update(dt: number): void {
     // Delta time comes from the Pixi ticker, capped at 100 ms
     const cappedDt = Math.min(0.1, Math.max(0, dt));
+
+    // Handle Active Teleport Transition
+    if (this.teleportTransition) {
+      const now = Date.now();
+      if (this.teleportTransition.phase === 'fade_out') {
+        const elapsed = now - this.teleportTransition.startTime;
+        const progress = Math.min(1, Math.max(0, elapsed / 250));
+        if (this.container) {
+          this.container.alpha = 1 - progress;
+        }
+        if (elapsed >= 250) {
+          this.executeTeleportMidpoint();
+        }
+      } else if (this.teleportTransition.phase === 'fade_in') {
+        const elapsed = now - this.teleportTransition.fadeStartTime;
+        const progress = Math.min(1, Math.max(0, elapsed / 250));
+        if (this.container) {
+          this.container.alpha = progress;
+        }
+        if (elapsed >= 250) {
+          this.finishTeleport();
+        }
+      }
+      this.syncVisuals();
+      return;
+    }
 
     // Handle Sitting State
     if (this.action === 'sit') {
@@ -666,6 +837,9 @@ export class LocalPlayer {
 
     // Zone check: current zone is the zone_trigger containing the player
     this.checkZoneChange();
+
+    // Fast travel landmark check
+    this.fastTravelSystem?.checkPosition(this.x, this.y);
 
     // Seats prompt check: within 20 px of a seat, show [E] prompt
     this.activeSeat = this.getNearestSeat(20);

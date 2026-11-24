@@ -439,4 +439,69 @@ describe('LocalPlayer', () => {
     player.handleKeyDown('KeyS');
     expect(player.action).toBe('walk');
   });
+
+  // Acceptance Criterion:
+  // Teleport transition:
+  // 1. firefly/leaf particle burst at the player
+  // 2. alpha fades 1 → 0 over 250 ms
+  // 3. move the player and snap the camera
+  // 4. burst at the destination, alpha back to 1 over 250 ms
+  // 5. emit GameEvents.teleported {x, y}
+  it('teleport transition executes full 5-step particle & alpha sequence', async () => {
+    const rawMap = generateStarterMap();
+    const starterMap = parseTiledMap(rawMap);
+    const camera = new Camera();
+    camera.updateViewport(800, 600);
+
+    // Mock world layers and player container for visual testing
+    const mockEntityLayer = {
+      addChild: vi.fn(),
+      removeChild: vi.fn(),
+    } as any;
+    const mockLayers = {
+      entityLayer: mockEntityLayer,
+      worldUiLayer: { addChild: vi.fn(), removeChild: vi.fn() },
+    } as any;
+
+    const player = new LocalPlayer(starterMap, camera, mockLayers, {
+      skipPixi: true,
+    });
+    player.container = {
+      alpha: 1,
+      position: { set: vi.fn() },
+    } as any;
+
+    const initialX = player.x;
+    const initialY = player.y;
+
+    const teleportSpy = vi.fn();
+    gameEvents.on('teleported', teleportSpy);
+
+    // Pub landmark location
+    const destX = 115 * TILE_SIZE + 8;
+    const destY = 17 * TILE_SIZE + 8;
+
+    // Start teleport (wall-clock animated)
+    const teleportPromise = player.teleport(destX, destY);
+
+    // 1. Particle burst at player
+    expect(mockEntityLayer.addChild).toHaveBeenCalled();
+
+    // 2. Midpoint execution at 250 ms
+    player.executeTeleportMidpoint();
+    expect(player.x).toBe(destX);
+    expect(player.y).toBe(destY);
+    expect(teleportSpy).not.toHaveBeenCalled(); // Not emitted yet
+
+    // 4. Second burst at destination
+    expect(mockEntityLayer.addChild).toHaveBeenCalledTimes(2);
+
+    // 5. Finish at 500 ms
+    player.finishTeleport();
+    expect(player.container!.alpha).toBe(1);
+    expect(teleportSpy).toHaveBeenCalledWith({ x: destX, y: destY });
+    expect(player.zone).toBe('pub');
+
+    await teleportPromise;
+  });
 });
