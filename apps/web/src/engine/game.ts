@@ -18,6 +18,7 @@ import { updateActiveBursts, clearActiveBursts } from './particles';
 import type { AssetManifest, EmoteId, PomoBadge, ZoneId } from '@lofi/shared';
 import { pomodoroController } from '../systems/PomodoroController';
 import { createTransport } from '../net/createTransport';
+import { LocalTransport } from '../net/LocalTransport';
 import type { TransportAdapter } from '../net/TransportAdapter';
 import { NetSync } from '../net/NetSync';
 
@@ -190,7 +191,15 @@ export class GameEngine {
     });
 
     // 8c. Transport & NetSync setup
-    this.transport = createTransport();
+    const isLockedOnLoad =
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('locked') === '1';
+
+    if (isLockedOnLoad) {
+      this.transport = new LocalTransport();
+    } else {
+      this.transport = createTransport();
+    }
     await this.transport.connect();
     this.netSync = new NetSync(this.transport, this.player, {
       layers: this.layers,
@@ -328,6 +337,25 @@ export class GameEngine {
 
   public triggerEmote(emoteId: EmoteId, now: number = Date.now()): boolean {
     return this.player?.triggerEmote(emoteId, now) ?? false;
+  }
+
+  public async setTransport(transport: TransportAdapter): Promise<void> {
+    if (this.netSync) {
+      this.netSync.destroy();
+      this.netSync = undefined;
+    }
+    if (this.transport) {
+      this.transport.disconnect();
+    }
+    this.transport = transport;
+    await this.transport.connect();
+    if (this.player && this.layers) {
+      this.netSync = new NetSync(this.transport, this.player, {
+        layers: this.layers,
+        worldUiLayer: this.layers.worldUiLayer,
+        entityLayer: this.layers.entityLayer,
+      });
+    }
   }
 
   public destroy(): void {

@@ -18,6 +18,7 @@ import { WardrobePanel } from './ui/WardrobePanel';
 import { EmoteBar } from './components/EmoteBar';
 import { PomoCard } from './components/PomoCard';
 import { RosterPanel } from './components/RosterPanel';
+import { RoomControls } from './components/RoomControls';
 
 export default function App() {
   const [isAutoStroll, setIsAutoStroll] = useState(false);
@@ -224,6 +225,7 @@ export default function App() {
         >
           Wardrobe
         </button>
+        <RoomControls />
       </div>
 
       <MixerPanel />
