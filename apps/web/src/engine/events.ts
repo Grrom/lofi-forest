@@ -3,7 +3,7 @@ import type { EmoteId, PomoBadge, ZoneId } from '@lofi/shared';
 export interface GameEventPayloads {
   zoneChanged: { zone: ZoneId };
   teleported: { x: number; y: number };
-  pomoPhaseChanged: { phase: PomoBadge; endsAtMs: number };
+  pomoPhaseChanged: { phase: PomoBadge; endsAtMs: number | null };
   localEmote: { emote: EmoteId };
   localInput: Record<string, never>;
   toast: { message: string; durationMs?: number };

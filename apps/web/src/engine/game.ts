@@ -14,7 +14,36 @@ import { gameEvents } from './events';
 import { LocalPlayer } from '../entities/LocalPlayer';
 import { FastTravelSystem, defaultFastTravelSystem } from '../systems/FastTravelSystem';
 import { updateActiveBursts, clearActiveBursts } from './particles';
-import type { AssetManifest, ZoneId } from '@lofi/shared';
+import type { AssetManifest, PomoBadge, ZoneId } from '@lofi/shared';
+import { pomodoroController } from '../systems/PomodoroController';
+
+export interface PomoEffectTargets {
+  player?: {
+    celebrate?: () => void;
+  };
+  atmosphere?: {
+    setVignette?: (enabled: boolean) => void;
+    pulseGlow?: () => void;
+  };
+}
+
+export function applyPomoPhaseEffects(
+  prevBadge: PomoBadge,
+  nextBadge: PomoBadge,
+  targets: PomoEffectTargets
+): void {
+  if (nextBadge === 'focus') {
+    targets.atmosphere?.setVignette?.(true);
+  } else {
+    targets.atmosphere?.setVignette?.(false);
+  }
+
+  // on focus → break: celebrate(), pulseGlow(), vignette off
+  if (prevBadge === 'focus' && nextBadge === 'break') {
+    targets.player?.celebrate?.();
+    targets.atmosphere?.pulseGlow?.();
+  }
+}
 
 export class GameEngine {
   public app!: Application;
@@ -33,6 +62,7 @@ export class GameEngine {
   private lastTickMs = Date.now();
   private updateIntervalId: any = null;
   private unsubZoneChanged?: () => void;
+  private unsubPomo?: () => void;
 
   public async init(canvasContainer?: HTMLElement): Promise<Application> {
     // 1. Ensure nearest neighbor scaleMode
@@ -136,6 +166,21 @@ export class GameEngine {
     this.unsubZoneChanged = gameEvents.on('zoneChanged', ({ zone }) => {
       this.currentZone = zone;
       this.atmosphere.setZone(zone);
+    });
+
+    // 8b. Initial Pomodoro sync and event subscription
+    const initialBadge = pomodoroController.localBadge();
+    if (initialBadge === 'focus') {
+      this.atmosphere.setVignette(true);
+    }
+
+    let prevBadge: PomoBadge = initialBadge;
+    this.unsubPomo = gameEvents.on('pomoPhaseChanged', ({ phase }) => {
+      applyPomoPhaseEffects(prevBadge, phase, {
+        player: this.player,
+        atmosphere: this.atmosphere,
+      });
+      prevBadge = phase;
     });
 
     // Tap / Click-to-walk on canvas
@@ -264,6 +309,10 @@ export class GameEngine {
     if (this.unsubZoneChanged) {
       this.unsubZoneChanged();
       this.unsubZoneChanged = undefined;
+    }
+    if (this.unsubPomo) {
+      this.unsubPomo();
+      this.unsubPomo = undefined;
     }
     if (this.updateIntervalId) {
       clearInterval(this.updateIntervalId);

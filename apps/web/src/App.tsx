@@ -11,6 +11,7 @@ import { AudioUnlockPill } from './components/AudioUnlockPill';
 import { MixerPanel } from './components/MixerPanel';
 import { gameEvents } from './engine/events';
 import { WardrobePanel } from './ui/WardrobePanel';
+import { PomoCard } from './components/PomoCard';
 
 export default function App() {
   const [zoomSetting, setZoomSetting] = useState<ZoomSetting>(() =>
@@ -226,6 +227,7 @@ export default function App() {
       </div>
 
       <MixerPanel />
+      <PomoCard />
       <div className="hud-fast-travel" style={{ marginTop: '12px' }}>
         <div
           style={{
@@ -292,7 +294,6 @@ export default function App() {
           })}
         </div>
       </div>
-
       {isWardrobeOpen && <WardrobePanel onClose={() => setIsWardrobeOpen(false)} />}
     </div>
   );
