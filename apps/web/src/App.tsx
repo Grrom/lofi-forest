@@ -6,6 +6,7 @@ import { MixerPanel } from './components/MixerPanel';
 import { gameEvents } from './engine/events';
 import { WardrobePanel } from './ui/WardrobePanel';
 import { EmoteBar } from './components/EmoteBar';
+import { PomoCard } from './components/PomoCard';
 
 export default function App() {
   const [zoomSetting, setZoomSetting] = useState<ZoomSetting>(() =>
@@ -162,6 +163,7 @@ export default function App() {
       </div>
 
       <MixerPanel />
+      <PomoCard />
       {isWardrobeOpen && <WardrobePanel onClose={() => setIsWardrobeOpen(false)} />}
     </div>
     <EmoteBar />
