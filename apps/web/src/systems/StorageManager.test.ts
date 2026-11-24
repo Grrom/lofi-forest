@@ -300,5 +300,55 @@ describe('StorageManager', () => {
         (prefs.volumes as unknown as { master: number }).master = 0.2;
       }).toThrow();
     });
+
+    // Acceptance criterion:
+    // Test: with localStorage['lofi_zoom'] = '4' and no lofi-forest:v1 key, loading gives zoom === 4, persists it in lofi-forest:v1, and removes lofi_zoom.
+    it('with localStorage["lofi_zoom"] = "4" and no lofi-forest:v1 key, loading gives zoom === 4, persists it in lofi-forest:v1, and removes lofi_zoom', () => {
+      localStorage.setItem('lofi_zoom', '4');
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+
+      const prefs = get();
+      expect(prefs.zoom).toBe(4);
+
+      const storedRaw = localStorage.getItem(STORAGE_KEY);
+      expect(storedRaw).not.toBeNull();
+      const stored = JSON.parse(storedRaw!);
+      expect(stored.zoom).toBe(4);
+
+      expect(localStorage.getItem('lofi_zoom')).toBeNull();
+    });
+
+    // Acceptance criterion:
+    // Test: with lofi_zoom = '2' and an existing lofi-forest:v1 with zoom: 3, the loaded zoom stays 3 and lofi_zoom is removed.
+    it('with lofi_zoom = "2" and an existing lofi-forest:v1 with zoom: 3, the loaded zoom stays 3 and lofi_zoom is removed', () => {
+      localStorage.setItem('lofi_zoom', '2');
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ zoom: 3 }));
+
+      const prefs = get();
+      expect(prefs.zoom).toBe(3);
+      expect(localStorage.getItem('lofi_zoom')).toBeNull();
+    });
+
+    // Acceptance criterion:
+    // Test: when localStorage.removeItem throws during migration, loading still succeeds.
+    it('when localStorage.removeItem throws during migration, loading still succeeds', () => {
+      localStorage.setItem('lofi_zoom', '4');
+      vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+        throw new Error('Storage removeItem failed');
+      });
+
+      let prefs: any;
+      expect(() => {
+        prefs = get();
+      }).not.toThrow();
+      expect(prefs.zoom).toBe(4);
+    });
+
+    it('with lofi_zoom = "invalid", loading gives default zoom and removes lofi_zoom', () => {
+      localStorage.setItem('lofi_zoom', 'invalid');
+      const prefs = get();
+      expect(prefs.zoom).toBe('auto');
+      expect(localStorage.getItem('lofi_zoom')).toBeNull();
+    });
   });
 });

@@ -24,14 +24,15 @@ export interface PomoPrefs {
   breakMin: number;
 }
 
-export type ZoomLevel = 'auto' | 2 | 3 | 4;
+export type ZoomSetting = 'auto' | 2 | 3 | 4;
+export type ZoomLevel = ZoomSetting;
 
 export interface StoragePrefs {
   profile: ProfilePrefs;
   unlockedLandmarks: string[];
   volumes: VolumePrefs;
   pomo: PomoPrefs;
-  zoom: ZoomLevel;
+  zoom: ZoomSetting;
   showNames: boolean;
 }
 
@@ -464,6 +465,56 @@ export class StorageManager {
     });
   }
 
+  private migrateLegacyZoom(): void {
+    try {
+      const storage =
+        typeof window !== 'undefined' && window.localStorage
+          ? window.localStorage
+          : typeof localStorage !== 'undefined'
+            ? localStorage
+            : null;
+      if (!storage) {
+        return;
+      }
+
+      let legacy: string | null = null;
+      try {
+        legacy = storage.getItem('lofi_zoom');
+        if (legacy === null && 'lofi_zoom' in storage) {
+          legacy = (storage as any)['lofi_zoom'];
+        }
+      } catch {
+        legacy = null;
+      }
+
+      const legacyStr =
+        legacy !== null && legacy !== undefined ? String(legacy) : null;
+      if (legacyStr === '2' || legacyStr === '3' || legacyStr === '4') {
+        if (this.current.zoom === 'auto') {
+          const numZoom = parseInt(legacyStr, 10) as 2 | 3 | 4;
+          this.current = this.mergePrefs(this.current, { zoom: numZoom });
+          try {
+            const json = JSON.stringify(this.current);
+            storage.setItem(this.key, json);
+            this.lastStoredRaw = json;
+            this.inMemoryDirty = false;
+          } catch {
+            this.inMemoryDirty = true;
+          }
+        }
+      }
+
+      // In all cases, remove lofi_zoom afterwards
+      try {
+        storage.removeItem('lofi_zoom');
+      } catch {
+        // Migration errors (storage throws) are swallowed
+      }
+    } catch {
+      // Migration errors (storage throws) are swallowed
+    }
+  }
+
   public get(): StoragePrefs {
     let raw: string | null = null;
     let readSuccess = false;
@@ -482,6 +533,9 @@ export class StorageManager {
       this.lastStoredRaw = raw;
       this.initialized = true;
       this.inMemoryDirty = false;
+      if (this.key === STORAGE_KEY) {
+        this.migrateLegacyZoom();
+      }
     } else if (readSuccess && raw !== this.lastStoredRaw) {
       this.current = this.loadFromRaw(raw);
       this.lastStoredRaw = raw;
