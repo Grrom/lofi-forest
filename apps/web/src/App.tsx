@@ -18,6 +18,8 @@ import { WardrobePanel } from './ui/WardrobePanel';
 import { EmoteBar } from './components/EmoteBar';
 import { PomoCard } from './components/PomoCard';
 import { RosterPanel } from './components/RosterPanel';
+import { createTransport } from './net/createTransport';
+import type { TransportStatus } from './net/TransportAdapter';
 
 export default function App() {
   const [isAutoStroll, setIsAutoStroll] = useState(false);
@@ -27,6 +29,7 @@ export default function App() {
   );
   const [isVibing, setIsVibing] = useState(false);
   const [isWardrobeOpen, setIsWardrobeOpen] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<TransportStatus>('connected');
 
   useEffect(() => {
     // Sync Auto-Stroll and Vibe states on manual input
@@ -53,13 +56,39 @@ export default function App() {
       }, durationMs);
     });
 
+    const unsubStatus = gameEvents.on('connectionStatusChanged', ({ status }) => {
+      setConnectionStatus(status);
+    });
+
     return () => {
       unsubInput();
       unsubToast();
       unsubGameToast();
+      unsubStatus();
       if (toastTimer) clearTimeout(toastTimer);
     };
   }, []);
+
+  const handleJoinPublicLobby = async () => {
+    if (typeof window !== 'undefined' && window.location) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', 'public');
+      window.history.pushState({}, '', url.toString());
+    }
+    if (gameEngine?.connectPublicLobby) {
+      await gameEngine.connectPublicLobby();
+    } else {
+      const transport = createTransport('?room=public');
+      await transport.connect();
+    }
+  };
+
+  const handleTryAgain = async () => {
+    if (gameEngine?.transport) {
+      await gameEngine.transport.connect();
+    }
+    gameEvents.emit('retryConnection', {});
+  };
 
   const handleCycleZoom = () => {
     if (gameEngine?.camera) {
@@ -151,6 +180,27 @@ export default function App() {
           lofi-forest
         </h1>
         <StatusPill />
+        {connectionStatus === 'room_full' && (
+          <button
+            type="button"
+            className="hud-try-again-btn"
+            onClick={handleTryAgain}
+            aria-label="Try again"
+            style={{
+              padding: '3px 8px',
+              fontFamily: 'monospace',
+              fontSize: '11px',
+              cursor: 'pointer',
+              backgroundColor: '#782d2d',
+              color: '#ffffff',
+              border: '1px solid #ef4444',
+              borderRadius: '4px',
+              fontWeight: 'bold',
+            }}
+          >
+            Try again
+          </button>
+        )}
         <AudioUnlockPill />
       </div>
 
@@ -172,6 +222,25 @@ export default function App() {
           }}
         >
           Zoom: {prefs.zoom}
+        </button>
+        <button
+          type="button"
+          className="hud-public-btn"
+          onClick={handleJoinPublicLobby}
+          aria-label="Join Public Lobby"
+          style={{
+            marginLeft: '8px',
+            padding: '4px 8px',
+            fontFamily: 'monospace',
+            fontSize: '12px',
+            cursor: 'pointer',
+            backgroundColor: '#2b3f2f',
+            color: '#fffaeb',
+            border: '1px solid #4a7c59',
+            borderRadius: '4px',
+          }}
+        >
+          Join Public Lobby
         </button>
         <button
           type="button"

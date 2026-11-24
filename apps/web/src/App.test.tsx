@@ -427,4 +427,61 @@ describe('apps/web HUD and Audio UI', () => {
     const fresh = new StorageManager();
     expect(fresh.get().zoom).toBe(3);
   });
+
+  // Acceptance criterion:
+  // HUD: a "Join Public Lobby" button sets ?room=public and connects.
+  it('HUD: a "Join Public Lobby" button sets ?room=public and connects', async () => {
+    const connectSpy = vi.fn().mockResolvedValue(undefined);
+    (gameEngine as any).connectPublicLobby = connectSpy;
+
+    render(<App />);
+    const joinBtn = screen.getByRole('button', { name: /join public lobby/i });
+    expect(joinBtn).toBeDefined();
+
+    await act(async () => {
+      fireEvent.click(joinBtn);
+    });
+
+    expect(window.location.search).toContain('room=public');
+    expect(connectSpy).toHaveBeenCalled();
+    (gameEngine as any).connectPublicLobby = undefined;
+  });
+
+  // Acceptance criterion:
+  // close 4001 or {t:'full'}: status room_full, no auto-retry, HUD offers "Try again"
+  it('HUD offers "Try again" when room_full and calls connect on retry', async () => {
+    const connectSpy = vi.fn().mockResolvedValue(undefined);
+    (gameEngine as any).transport = {
+      connect: connectSpy,
+    };
+
+    render(<App />);
+
+    // Initially room_full is false -> no "Try again" button
+    expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
+
+    // Emit connectionStatusChanged { status: 'room_full' }
+    act(() => {
+      (gameEngine as any).gameEvents?.emit?.('connectionStatusChanged', { status: 'room_full' });
+      // or import gameEvents directly
+    });
+
+    // Alternatively, use imported gameEvents
+    const { gameEvents } = await import('./engine/events');
+    act(() => {
+      gameEvents.emit('connectionStatusChanged', { status: 'room_full' });
+    });
+
+    // "Try again" button should now be visible
+    const retryBtn = screen.getByRole('button', { name: /try again/i });
+    expect(retryBtn).toBeDefined();
+
+    // Click "Try again"
+    await act(async () => {
+      fireEvent.click(retryBtn);
+    });
+
+    expect(connectSpy).toHaveBeenCalled();
+    (gameEngine as any).transport = undefined;
+  });
 });

@@ -1,13 +1,15 @@
 import { isValidRoomCode, PUBLIC_ROOM_CODE } from '@lofi/shared';
 import type { TransportAdapter, TransportMode } from './TransportAdapter';
 import { LocalTransport } from './LocalTransport';
+import { WebSocketTransport } from './WebSocketTransport';
 
 export type TransportFactory = (room?: string) => TransportAdapter;
 
 export const transportRegistry = new Map<TransportMode, TransportFactory>();
 
-// Register solo mode by default
+// Register solo and public modes by default
 transportRegistry.set('solo', () => new LocalTransport());
+transportRegistry.set('public', (room) => new WebSocketTransport());
 
 export function registerTransport(mode: TransportMode, factory: TransportFactory): void {
   transportRegistry.set(mode, factory);

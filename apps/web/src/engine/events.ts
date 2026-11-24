@@ -10,6 +10,7 @@ export interface GameEventPayloads {
   toast: { message: string; durationMs?: number };
   playersChanged: { players: Map<string, PlayerNetState> };
   connectionStatusChanged: { status: TransportStatus };
+  retryConnection: Record<string, never>;
 }
 
 export type GameEventName = keyof GameEventPayloads;
