@@ -1,11 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import App from './App';
-import { StorageManager } from './systems/StorageManager';
+import { StorageManager, resetStorageManager } from './systems/StorageManager';
 import { audioEngine } from './audio/AudioEngine';
 import { createMockAudioContext } from './audio/mockAudioContext';
 import { gameEngine } from './engine/game';
 import { LocalPlayer } from './entities/LocalPlayer';
+import { defaultFastTravelSystem } from './systems/FastTravelSystem';
+import { generateStarterMap } from './engine/starterMapData';
+import { parseTiledMap } from './engine/tiled';
 import { pomodoroController } from './systems/PomodoroController';
 
 describe('apps/web HUD and Audio UI', () => {
@@ -178,6 +181,42 @@ describe('apps/web HUD and Audio UI', () => {
     (gameEngine as any).player = undefined;
   });
 
+  // Acceptance Criterion:
+  // React Fast Travel panel: unlocked landmarks are clickable; locked ones show as greyed ???.
+  it('renders the Fast Travel panel: unlocked landmarks are clickable; locked ones show as greyed ???', () => {
+    render(<App />);
+
+    // Fast travel section exists
+    expect(screen.getByText('Fast Travel')).toBeDefined();
+
+    // With fresh storage, only Forest Clearing is unlocked
+    const clearingBtn = screen.getByRole('button', { name: /forest clearing/i });
+    expect(clearingBtn).toBeDefined();
+
+    // Locked landmarks show as greyed ???
+    const lockedItems = screen.getAllByText('???');
+    expect(lockedItems.length).toBeGreaterThanOrEqual(2); // Lakeside Dock and Cozy Pub are locked
+  });
+
+  it('clicking an unlocked landmark invokes teleportToLandmark', async () => {
+    const teleportSpy = vi.fn();
+    gameEngine.player = {
+      teleportToLandmark: teleportSpy,
+      isAutoStroll: false,
+    } as any;
+
+    render(<App />);
+
+    const clearingBtn = screen.getByRole('button', { name: /forest clearing/i });
+    await act(async () => {
+      fireEvent.click(clearingBtn);
+    });
+
+    expect(teleportSpy).toHaveBeenCalledWith('forest_clearing');
+
+    (gameEngine as any).player = undefined;
+  });
+
   it('renders the Vibe HUD toggle and allows toggling vibe', () => {
     const mockMap: any = {
       width: 10,
@@ -206,6 +245,59 @@ describe('apps/web HUD and Audio UI', () => {
     expect(player.action).toBe('idle');
 
     (gameEngine as any).player = undefined;
+  });
+
+  it('displays the discovery toast for 3 seconds', () => {
+    vi.useFakeTimers();
+    try {
+      localStorage.clear();
+      resetStorageManager();
+      defaultFastTravelSystem.clearToast();
+
+      const rawMap = generateStarterMap();
+      const starterMap = parseTiledMap(rawMap);
+      defaultFastTravelSystem.setMap(starterMap);
+
+      const player = new LocalPlayer(starterMap, undefined, undefined, {
+        skipPixi: true,
+        fastTravelSystem: defaultFastTravelSystem,
+      });
+      defaultFastTravelSystem.setPlayer(player);
+      gameEngine.player = player;
+
+      render(<App />);
+
+      // Before discovery: no toast
+      expect(screen.queryByRole('status')).toBeNull();
+
+      // Find lakeside_dock landmark
+      const dock = starterMap.landmarks.find((l) => l.id === 'lakeside_dock')!;
+      expect(dock).toBeDefined();
+
+      // Move player into lakeside_dock radius
+      player.x = dock.x;
+      player.y = dock.y;
+
+      act(() => {
+        player.update(0.016);
+      });
+
+      // Assert that getByRole('status') has text 'Discovered: Lakeside Dock'
+      const toast = screen.getByRole('status');
+      expect(toast).toBeDefined();
+      expect(toast.textContent).toBe('Discovered: Lakeside Dock');
+
+      // Then advance timers by 3000 ms
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+
+      // Assert the status element is gone
+      expect(screen.queryByRole('status')).toBeNull();
+    } finally {
+      (gameEngine as any).player = undefined;
+      vi.useRealTimers();
+    }
   });
 
   it('pressing V key updates Vibe HUD button to ON and toggling back to OFF', () => {
@@ -240,7 +332,7 @@ describe('apps/web HUD and Audio UI', () => {
     (gameEngine as any).player = undefined;
   });
 
-  it('clicking Vibe HUD button wakes sleeping player and sets action to vibe with label ON', () => {
+  it('clicking Vibe HUD button wakes sleeping player and sets action to vibe with label ON', async () => {
     const mockMap: any = {
       width: 10,
       height: 10,
@@ -259,7 +351,9 @@ describe('apps/web HUD and Audio UI', () => {
     player.afkDetector!.isSleeping = true;
     player.afkDetector!.action = 'sleep';
 
-    fireEvent.click(vibeBtn);
+    await act(async () => {
+      fireEvent.click(vibeBtn);
+    });
 
     expect(player.action).toBe('vibe');
     expect(vibeBtn.textContent).toContain('Vibe: ON');
