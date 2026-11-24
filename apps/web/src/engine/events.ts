@@ -1,4 +1,5 @@
-import type { EmoteId, PomoBadge, ZoneId } from '@lofi/shared';
+import type { EmoteId, PlayerNetState, PomoBadge, ZoneId } from '@lofi/shared';
+import type { TransportStatus } from '../net/TransportAdapter';
 
 export interface GameEventPayloads {
   zoneChanged: { zone: ZoneId };
@@ -7,6 +8,8 @@ export interface GameEventPayloads {
   localEmote: { emote: EmoteId };
   localInput: Record<string, never>;
   toast: { message: string; durationMs?: number };
+  playersChanged: { players: Map<string, PlayerNetState> };
+  connectionStatusChanged: { status: TransportStatus };
 }
 
 export type GameEventName = keyof GameEventPayloads;
