@@ -10,6 +10,7 @@ import { gameEngine } from './engine/game';
 import { AudioUnlockPill } from './components/AudioUnlockPill';
 import { MixerPanel } from './components/MixerPanel';
 import { gameEvents } from './engine/events';
+import { WardrobePanel } from './ui/WardrobePanel';
 
 export default function App() {
   const [zoomSetting, setZoomSetting] = useState<ZoomSetting>(() =>
@@ -20,15 +21,18 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(() =>
     defaultFastTravelSystem.getActiveToast()
   );
+  const [isVibing, setIsVibing] = useState(false);
+  const [isWardrobeOpen, setIsWardrobeOpen] = useState(false);
 
   useEffect(() => {
     // Sync current setting on mount
     setZoomSetting(StorageManager.getZoom());
 
-    // Sync Auto-Stroll state on manual input (manual input turns it off)
+    // Sync Auto-Stroll and Vibe states on manual input
     const unsubInput = gameEvents.on('localInput', () => {
       if (gameEngine?.player) {
         setIsAutoStroll(gameEngine.player.isAutoStroll);
+        setIsVibing(gameEngine.player.action === 'vibe');
       } else {
         setIsAutoStroll(false);
       }
@@ -94,6 +98,16 @@ export default function App() {
         ? defaultFastTravelSystem.landmarks
         : DEFAULT_LANDMARKS;
 
+  const handleToggleVibe = () => {
+    if (gameEngine?.player) {
+      gameEvents.emit('localInput', {});
+      const next = gameEngine.player.action === 'vibe' ? 'idle' : 'vibe';
+      gameEngine.player.action = next;
+      setIsVibing(next === 'vibe');
+    } else {
+      setIsVibing((prev) => !prev);
+    }
+  };
   return (
     <div
       className="hud"
@@ -175,10 +189,43 @@ export default function App() {
         >
           Auto-Stroll: {isAutoStroll ? 'ON' : 'OFF'}
         </button>
+        <button
+          type="button"
+          className="hud-vibe-btn"
+          onClick={handleToggleVibe}
+          aria-label="Toggle Vibe"
+          style={{
+            marginLeft: '8px',
+            padding: '4px 8px',
+            fontFamily: 'monospace',
+            fontSize: '12px',
+            cursor: 'pointer',
+            backgroundColor: isVibing ? '#8b5cf6' : undefined,
+            color: isVibing ? '#ffffff' : undefined,
+          }}
+        >
+          Vibe: {isVibing ? 'ON' : 'OFF'}
+        </button>
+        <button
+          type="button"
+          className="hud-wardrobe-btn"
+          onClick={() => setIsWardrobeOpen((prev) => !prev)}
+          aria-label="Toggle Wardrobe"
+          style={{
+            marginLeft: '8px',
+            padding: '4px 8px',
+            fontFamily: 'monospace',
+            fontSize: '12px',
+            cursor: 'pointer',
+            backgroundColor: isWardrobeOpen ? '#b58351' : undefined,
+            color: isWardrobeOpen ? '#ffffff' : undefined,
+          }}
+        >
+          Wardrobe
+        </button>
       </div>
 
       <MixerPanel />
-
       <div className="hud-fast-travel" style={{ marginTop: '12px' }}>
         <div
           style={{
@@ -245,6 +292,8 @@ export default function App() {
           })}
         </div>
       </div>
+
+      {isWardrobeOpen && <WardrobePanel onClose={() => setIsWardrobeOpen(false)} />}
     </div>
   );
 }
