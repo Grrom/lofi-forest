@@ -563,4 +563,60 @@ describe('apps/web HUD and Audio UI', () => {
       screen.getByRole('complementary', { name: /stream overlay/i })
     ).toBeDefined();
   });
+
+  // Client test: in public mode the HUD shows the server-assigned name and the wardrobe hint, and StorageManager profile.name is unchanged.
+  it('Client test: in public mode the HUD shows the server-assigned name and the wardrobe hint, and StorageManager profile.name is unchanged', async () => {
+    StorageManager.reset();
+    StorageManager.update({
+      profile: {
+        name: 'CustomPlayer',
+        outfit: { baseId: 'default', hatId: 'none', colorHex: '#ffffff' },
+      },
+    });
+    expect(StorageManager.get().profile.name).toBe('CustomPlayer');
+
+    const prevSearch = window.location.search;
+    window.history.pushState({}, '', '?room=public');
+
+    (gameEngine as any).transport = {
+      mode: 'public',
+      assignedName: 'Mossy Fox',
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+      onStatusChange: vi.fn().mockReturnValue(() => {}),
+      onPlayersChange: vi.fn().mockReturnValue(() => {}),
+      onEmote: vi.fn().mockReturnValue(() => {}),
+      sendLocalState: vi.fn(),
+      sendEmote: vi.fn(),
+    };
+
+    render(<App />);
+
+    const { gameEvents } = await import('./engine/events');
+    act(() => {
+      gameEvents.emit('assignedNameChanged', { name: 'Mossy Fox' });
+    });
+
+    // 1. In public mode, HUD shows the server-assigned name
+    expect(screen.getByText('Mossy Fox')).toBeDefined();
+
+    // 2. Open wardrobe panel
+    const wardrobeBtn = screen.getByRole('button', { name: /toggle wardrobe/i });
+    act(() => {
+      fireEvent.click(wardrobeBtn);
+    });
+
+    // Wardrobe shows the hint
+    expect(
+      screen.getByText('Custom names appear in your own rooms only')
+    ).toBeDefined();
+
+    // 3. StorageManager profile.name is unchanged
+    expect(StorageManager.get().profile.name).toBe('CustomPlayer');
+
+    // Cleanup
+    window.history.pushState({}, '', prevSearch || '/');
+    (gameEngine as any).transport = undefined;
+    StorageManager.reset();
+  });
 });

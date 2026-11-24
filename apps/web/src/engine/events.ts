@@ -12,6 +12,7 @@ export interface GameEventPayloads {
   connectionStatusChanged: { status: TransportStatus };
   retryConnection: Record<string, never>;
   toggleOverlay: Record<string, never>;
+  assignedNameChanged: { name: string };
 }
 
 export type GameEventName = keyof GameEventPayloads;

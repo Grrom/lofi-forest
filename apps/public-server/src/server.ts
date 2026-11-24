@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { WebSocket, WebSocketServer } from 'ws';
 import {
   clampToWorld,
+  generateLobbyName,
   MAX_FRAME_BYTES,
   parseClientMessage,
   sanitizeName,
@@ -28,6 +29,7 @@ export interface ServerConfig {
   helloTimeoutMs: number;
   pingIntervalMs: number;
   pongTimeoutMs: number;
+  nameRng?: () => number;
 }
 
 export interface ServerInstance {
@@ -116,6 +118,7 @@ export function resolveConfig(options?: Partial<ServerConfig>): ServerConfig {
     helloTimeoutMs: options?.helloTimeoutMs ?? 5000,
     pingIntervalMs: options?.pingIntervalMs ?? 25000,
     pongTimeoutMs: options?.pongTimeoutMs ?? 60000,
+    nameRng: options?.nameRng ?? Math.random,
   };
 }
 
@@ -355,7 +358,11 @@ export function createServer(options?: Partial<ServerConfig>) {
           }
 
           const playerId = crypto.randomUUID();
-          const name = sanitizeName(msg.name);
+          const existingNames = new Set<string>();
+          for (const p of players.values()) {
+            if (p.name) existingNames.add(p.name);
+          }
+          const name = generateLobbyName(existingNames, config.nameRng);
           playerSession = {
             id: playerId,
             name,
@@ -369,6 +376,7 @@ export function createServer(options?: Partial<ServerConfig>) {
           const welcome: ServerWelcomeMsg = {
             t: 'welcome',
             id: playerId,
+            name,
             players: getActivePlayersState(),
           };
           ws.send(JSON.stringify(welcome));

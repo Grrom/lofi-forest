@@ -343,11 +343,13 @@ describe('Additional protocol and P2P validator tests', () => {
     const welcomeRaw = JSON.stringify({
       t: 'welcome',
       id: 'p1',
+      name: 'Mossy Fox',
       players: [player1],
     });
     expect(parseServerMessage(welcomeRaw)).toEqual({
       t: 'welcome',
       id: 'p1',
+      name: 'Mossy Fox',
       players: [player1],
     });
 

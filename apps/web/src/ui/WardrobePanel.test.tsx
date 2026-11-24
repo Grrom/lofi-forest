@@ -103,4 +103,18 @@ describe('WardrobePanel', () => {
 
     expect(handleClose).toHaveBeenCalledTimes(1);
   });
+
+  it('in the lobby, the wardrobe name field shows the hint "Custom names appear in your own rooms only"', () => {
+    render(<WardrobePanel isLobby={true} />);
+    expect(
+      screen.getByText('Custom names appear in your own rooms only')
+    ).toBeDefined();
+  });
+
+  it('does not show the lobby hint when not in the lobby', () => {
+    render(<WardrobePanel isLobby={false} />);
+    expect(
+      screen.queryByText('Custom names appear in your own rooms only')
+    ).toBeNull();
+  });
 });

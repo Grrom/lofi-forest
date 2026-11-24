@@ -435,4 +435,26 @@ describe('WebSocketTransport', () => {
       registerTransport('public', () => new WebSocketTransport());
     }
   });
+
+  it('welcome message with name sets assignedName and emits assignedNameChanged', async () => {
+    const transport = new WebSocketTransport({ webSocketFactory });
+    await transport.connect();
+    createdSockets[0].triggerOpen();
+
+    let assigned: string | null = null;
+    const unsub = gameEvents.on('assignedNameChanged', ({ name }) => {
+      assigned = name;
+    });
+
+    createdSockets[0].triggerMessage({
+      t: 'welcome',
+      id: 'my-id',
+      name: 'Sleepy Hare',
+      players: [],
+    });
+
+    expect(transport.assignedName).toBe('Sleepy Hare');
+    expect(assigned).toBe('Sleepy Hare');
+    unsub();
+  });
 });

@@ -33,6 +33,7 @@ export class WebSocketTransport implements TransportAdapter {
   public status: TransportStatus = 'disconnected';
   public errorMessage: string | null = null;
   public myId: string | null = null;
+  public assignedName: string | null = null;
 
   private options: WebSocketTransportOptions;
   private ws: any = null;
@@ -270,6 +271,10 @@ export class WebSocketTransport implements TransportAdapter {
     switch (msg.t) {
       case 'welcome': {
         this.myId = msg.id;
+        if (msg.name) {
+          this.assignedName = msg.name;
+          gameEvents.emit('assignedNameChanged', { name: msg.name });
+        }
         this.players.clear();
         for (const p of msg.players) {
           if (p.id !== this.myId) {

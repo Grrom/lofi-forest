@@ -192,7 +192,7 @@ export class NetSync {
 
     const name = this.getNameFn
       ? this.getNameFn()
-      : this.localPlayer?.avatar?.playerName ?? StorageManager.get().profile.name;
+      : this.localPlayer?.assignedName ?? this.localPlayer?.avatar?.playerName ?? StorageManager.get().profile.name;
 
     const outfit = this.getOutfitFn
       ? this.getOutfitFn()
