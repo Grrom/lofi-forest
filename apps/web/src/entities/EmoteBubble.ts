@@ -1,7 +1,6 @@
 import { Container, Graphics, Sprite } from 'pixi.js';
 import { EMOTE_HOLD_MS, type EmoteId } from '@lofi/shared';
 import { assetLoader } from '../engine/assets/AssetLoader';
-import { gameEngine } from '../engine/game';
 
 export type ClockFn = () => number;
 
@@ -180,8 +179,9 @@ export function resolveWorldUiLayer(
     );
     if (sibling) return sibling;
   }
-  if (gameEngine?.layers?.worldUiLayer) {
-    return gameEngine.layers.worldUiLayer;
+  const ge = (globalThis as any).__lofiGameEngine;
+  if (ge?.layers?.worldUiLayer) {
+    return ge.layers.worldUiLayer;
   }
   return avatar.parent || avatar;
 }

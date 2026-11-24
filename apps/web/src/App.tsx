@@ -8,11 +8,13 @@ import {
 } from './systems/FastTravelSystem';
 import { gameEngine } from './engine/game';
 import { AudioUnlockPill } from './components/AudioUnlockPill';
+import { StatusPill } from './components/StatusPill';
 import { MixerPanel } from './components/MixerPanel';
 import { gameEvents } from './engine/events';
 import { WardrobePanel } from './ui/WardrobePanel';
 import { EmoteBar } from './components/EmoteBar';
 import { PomoCard } from './components/PomoCard';
+import { RosterPanel } from './components/RosterPanel';
 
 export default function App() {
   const [zoomSetting, setZoomSetting] = useState<ZoomSetting>(() =>
@@ -153,6 +155,7 @@ export default function App() {
         <h1 style={{ margin: 0, fontSize: '18px', color: '#e0eee0', fontFamily: 'monospace' }}>
           lofi-forest
         </h1>
+        <StatusPill />
         <AudioUnlockPill />
       </div>
 
@@ -230,6 +233,7 @@ export default function App() {
 
       <MixerPanel />
       <PomoCard />
+      <RosterPanel />
       <div className="hud-fast-travel" style={{ marginTop: '12px' }}>
         <div
           style={{

@@ -17,6 +17,9 @@ import { FastTravelSystem, defaultFastTravelSystem } from '../systems/FastTravel
 import { updateActiveBursts, clearActiveBursts } from './particles';
 import type { AssetManifest, EmoteId, PomoBadge, ZoneId } from '@lofi/shared';
 import { pomodoroController } from '../systems/PomodoroController';
+import { createTransport } from '../net/createTransport';
+import type { TransportAdapter } from '../net/TransportAdapter';
+import { NetSync } from '../net/NetSync';
 
 export interface PomoEffectTargets {
   player?: {
@@ -56,6 +59,8 @@ export class GameEngine {
   public atmosphere!: Atmosphere;
   public player!: LocalPlayer;
   public fastTravelSystem!: FastTravelSystem;
+  public transport?: TransportAdapter;
+  public netSync?: NetSync;
   public isDebug = false;
 
   private currentZone: ZoneId = 'forest';
@@ -184,6 +189,15 @@ export class GameEngine {
       prevBadge = phase;
     });
 
+    // 8c. Transport & NetSync setup
+    this.transport = createTransport();
+    await this.transport.connect();
+    this.netSync = new NetSync(this.transport, this.player, {
+      layers: this.layers,
+      worldUiLayer: this.layers.worldUiLayer,
+      entityLayer: this.layers.entityLayer,
+    });
+
     // Tap / Click-to-walk on canvas
     this.app.canvas.addEventListener('pointerdown', (e: PointerEvent) => {
       if (this.isDebug) return;
@@ -302,6 +316,9 @@ export class GameEngine {
     // Update atmosphere (glow flicker, pulse, rain, vignette)
     this.atmosphere?.update(this.camera, now);
 
+    // Update remote players via netSync
+    this.netSync?.update(dt, now);
+
     // Update active emote bubbles
     updateEmoteBubbles(now);
 
@@ -326,6 +343,8 @@ export class GameEngine {
       clearInterval(this.updateIntervalId);
       this.updateIntervalId = null;
     }
+    this.netSync?.destroy();
+    this.transport?.disconnect();
     this.player?.destroy();
     clearActiveBursts();
     this.app?.destroy(true, { children: true, texture: false });
@@ -333,3 +352,4 @@ export class GameEngine {
 }
 
 export const gameEngine = new GameEngine();
+(globalThis as any).__lofiGameEngine = gameEngine;
