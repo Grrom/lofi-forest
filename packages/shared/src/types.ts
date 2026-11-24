@@ -54,6 +54,7 @@ export type ClientMessage = ClientHelloMsg | ClientStateMsg | ClientEmoteMsg;
 export interface ServerWelcomeMsg {
   t: 'welcome';
   id: string;
+  name?: string;
   players: PlayerNetState[];
 }
 

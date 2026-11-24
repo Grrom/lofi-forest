@@ -214,6 +214,7 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
   switch (msg.t) {
     case 'welcome': {
       if (typeof msg.id !== 'string' || msg.id.length === 0) return null;
+      if (msg.name !== undefined && (typeof msg.name !== 'string' || msg.name.length === 0)) return null;
       if (!Array.isArray(msg.players)) return null;
       for (const p of msg.players) {
         if (!isValidPlayerNetState(p)) return null;
@@ -221,6 +222,7 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
       return {
         t: 'welcome',
         id: msg.id,
+        ...(typeof msg.name === 'string' ? { name: msg.name } : {}),
         players: msg.players as PlayerNetState[],
       };
     }
