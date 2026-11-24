@@ -5,6 +5,7 @@ import { AudioUnlockPill } from './components/AudioUnlockPill';
 import { MixerPanel } from './components/MixerPanel';
 import { gameEvents } from './engine/events';
 import { WardrobePanel } from './ui/WardrobePanel';
+import { EmoteBar } from './components/EmoteBar';
 
 export default function App() {
   const [zoomSetting, setZoomSetting] = useState<ZoomSetting>(() =>
@@ -68,6 +69,7 @@ export default function App() {
   };
 
   return (
+    <>
     <div
       className="hud"
       style={{
@@ -162,5 +164,7 @@ export default function App() {
       <MixerPanel />
       {isWardrobeOpen && <WardrobePanel onClose={() => setIsWardrobeOpen(false)} />}
     </div>
+    <EmoteBar />
+    </>
   );
 }

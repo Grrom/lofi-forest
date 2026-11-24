@@ -12,7 +12,8 @@ import {
 import { Atmosphere } from './atmosphere';
 import { gameEvents } from './events';
 import { LocalPlayer } from '../entities/LocalPlayer';
-import type { AssetManifest, ZoneId } from '@lofi/shared';
+import { updateEmoteBubbles } from '../entities/EmoteBubble';
+import type { AssetManifest, EmoteId, ZoneId } from '@lofi/shared';
 
 export class GameEngine {
   public app!: Application;
@@ -247,6 +248,13 @@ export class GameEngine {
 
     // Update atmosphere (glow flicker, pulse, rain, vignette)
     this.atmosphere?.update(this.camera, now);
+
+    // Update active emote bubbles
+    updateEmoteBubbles(now);
+  }
+
+  public triggerEmote(emoteId: EmoteId, now: number = Date.now()): boolean {
+    return this.player?.triggerEmote(emoteId, now) ?? false;
   }
 
   public destroy(): void {

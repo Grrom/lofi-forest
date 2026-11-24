@@ -1,8 +1,15 @@
 import { Container, Graphics, Sprite, Text } from 'pixi.js';
-import type { Facing, Outfit, PlayerAction } from '@lofi/shared';
+import type { EmoteId, Facing, Outfit, PlayerAction } from '@lofi/shared';
 import { assetLoader } from '../engine/assets/AssetLoader';
 import { StorageManager } from '../systems/StorageManager';
 import { ProceduralAnimator, type AnimationSample } from './ProceduralAnimator';
+import {
+  destroyEmoteBubble,
+  showEmote,
+  type EmoteBubble,
+} from './EmoteBubble';
+
+export { showEmote, type EmoteBubble } from './EmoteBubble';
 
 export interface PlayerAvatarOptions {
   outfit?: Outfit;
@@ -45,6 +52,7 @@ export class PlayerAvatar extends Container {
   public playerName: string | null = null;
   public showNames: boolean;
   public status: 'none' | 'focus' | 'break';
+  public worldUiLayer?: Container;
 
   public headAnchor = { x: 0, y: 0 };
 
@@ -354,7 +362,12 @@ export class PlayerAvatar extends Container {
     }
   }
 
+  public showEmote(emoteId: EmoteId, clock?: () => number): EmoteBubble {
+    return showEmote(this, emoteId, this.worldUiLayer, clock);
+  }
+
   public override destroy(options?: Parameters<Container['destroy']>[0]): void {
+    destroyEmoteBubble(this);
     if (this.unsubStorage) {
       this.unsubStorage();
       this.unsubStorage = undefined;

@@ -559,4 +559,148 @@ describe('LocalPlayer', () => {
 
     player.destroy();
   });
+
+  // Acceptance criterion:
+  // Test: pressing '3' emits 'localEmote' with 'music'.
+  it("pressing '3' emits 'localEmote' with 'music'", () => {
+    const map = createMockMap();
+    const player = new LocalPlayer(map, undefined, undefined, {
+      skipPixi: true,
+    });
+
+    const emoteListener = vi.fn();
+    const inputListener = vi.fn();
+    gameEvents.on('localEmote', emoteListener);
+    gameEvents.on('localInput', inputListener);
+
+    player.handleKeyDown('3');
+
+    expect(emoteListener).toHaveBeenCalledTimes(1);
+    expect(emoteListener).toHaveBeenCalledWith({ emote: 'music' });
+    expect(inputListener).toHaveBeenCalled();
+
+    player.destroy();
+  });
+
+  // Acceptance criterion:
+  // Test: presses 500 ms apart emit once; presses 1100 ms apart emit twice.
+  it('presses 500 ms apart emit once; presses 1100 ms apart emit twice', () => {
+    vi.useFakeTimers();
+    const map = createMockMap();
+    const player = new LocalPlayer(map, undefined, undefined, {
+      skipPixi: true,
+    });
+
+    const emoteListener = vi.fn();
+    gameEvents.on('localEmote', emoteListener);
+
+    // 1. Initial press at t = 0
+    player.handleKeyDown('3');
+    expect(emoteListener).toHaveBeenCalledTimes(1);
+    expect(emoteListener).toHaveBeenLastCalledWith({ emote: 'music' });
+
+    // 2. Second press at t = 500 ms (500 ms apart): must be ignored due to 1000 ms cooldown
+    vi.advanceTimersByTime(500);
+    player.handleKeyDown('3');
+    expect(emoteListener).toHaveBeenCalledTimes(1);
+
+    // 3. Third press at t = 1100 ms (1100 ms after the first accepted press): must emit again
+    vi.advanceTimersByTime(600); // 500 + 600 = 1100 ms
+    player.handleKeyDown('3');
+    expect(emoteListener).toHaveBeenCalledTimes(2);
+    expect(emoteListener).toHaveBeenLastCalledWith({ emote: 'music' });
+
+    player.destroy();
+    vi.useRealTimers();
+  });
+
+  // Acceptance criterion:
+  // Test: a hotkey pressed while an <input> has focus emits nothing.
+  it('a hotkey pressed while an <input> has focus emits nothing', () => {
+    const map = createMockMap();
+    const player = new LocalPlayer(map, undefined, undefined, {
+      skipPixi: true,
+    });
+
+    const emoteListener = vi.fn();
+    const inputListener = vi.fn();
+    gameEvents.on('localEmote', emoteListener);
+    gameEvents.on('localInput', inputListener);
+
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+
+    // Try pressing emote hotkeys while input has focus
+    player.handleKeyDown('3');
+    player.handleKeyDown('Digit1');
+    player.handleKeyDown('Digit2');
+
+    expect(emoteListener).not.toHaveBeenCalled();
+    expect(inputListener).not.toHaveBeenCalled();
+
+    document.body.removeChild(input);
+    player.destroy();
+  });
+
+  it('each accepted local emote counts as input and wakes the player from AFK', () => {
+    vi.useFakeTimers();
+    const map = createMockMap();
+    const player = new LocalPlayer(map, undefined, undefined, {
+      skipPixi: true,
+    });
+
+    // Advance 300 000 ms to trigger AFK sleep
+    vi.advanceTimersByTime(300000);
+    expect(player.afkDetector?.isSleeping).toBe(true);
+    expect(player.action).toBe('sleep');
+
+    const emoteListener = vi.fn();
+    const inputListener = vi.fn();
+    gameEvents.on('localEmote', emoteListener);
+    gameEvents.on('localInput', inputListener);
+
+    // Press emote hotkey
+    player.handleKeyDown('3');
+
+    expect(emoteListener).toHaveBeenCalledWith({ emote: 'music' });
+    expect(inputListener).toHaveBeenCalled();
+    expect(player.afkDetector?.isSleeping).toBe(false);
+    expect(player.action).toBe('idle');
+
+    player.destroy();
+    vi.useRealTimers();
+  });
+
+  it('hotkeys 1 through 6 map to EMOTE_IDS heart, coffee, music, wave, zzz, sparkle', () => {
+    vi.useFakeTimers();
+    const map = createMockMap();
+    const player = new LocalPlayer(map, undefined, undefined, {
+      skipPixi: true,
+    });
+
+    const expected = [
+      { key: '1', emote: 'heart' },
+      { key: '2', emote: 'coffee' },
+      { key: '3', emote: 'music' },
+      { key: '4', emote: 'wave' },
+      { key: '5', emote: 'zzz' },
+      { key: '6', emote: 'sparkle' },
+    ];
+
+    for (const { key, emote } of expected) {
+      const emoteListener = vi.fn();
+      const unsub = gameEvents.on('localEmote', emoteListener);
+
+      player.handleKeyDown(key);
+      expect(emoteListener).toHaveBeenCalledWith({ emote });
+      unsub();
+
+      // Advance past cooldown
+      vi.advanceTimersByTime(1100);
+    }
+
+    player.destroy();
+    vi.useRealTimers();
+  });
 });
