@@ -3,7 +3,7 @@ import {
   WORLD_WIDTH_PX,
   WORLD_HEIGHT_PX,
 } from '@lofi/shared';
-import { StorageManager, type ZoomSetting } from './storage';
+import { StorageManager, type ZoomSetting } from '../systems/StorageManager';
 
 export type ZoomLevel = 2 | 3 | 4;
 
@@ -39,7 +39,7 @@ export class Camera {
   public viewportH = 0;
 
   constructor() {
-    this.zoomSetting = StorageManager.getZoom();
+    this.zoomSetting = StorageManager.get().zoom;
   }
 
   public updateViewport(w: number, h: number): void {
@@ -51,7 +51,7 @@ export class Camera {
 
   public setZoomSetting(setting: ZoomSetting): void {
     this.zoomSetting = setting;
-    StorageManager.setZoom(setting);
+    StorageManager.update({ zoom: setting });
     this.recalculateZoom();
     this.clamp();
   }

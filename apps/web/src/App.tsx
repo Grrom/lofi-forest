@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { StorageManager, type ZoomSetting } from './engine/storage';
-import { usePrefs } from './systems/StorageManager';
+import {
+  usePrefs,
+  StorageManager,
+  type ZoomSetting,
+} from './systems/StorageManager';
 import {
   defaultFastTravelSystem,
   DEFAULT_LANDMARKS,
@@ -17,9 +20,6 @@ import { PomoCard } from './components/PomoCard';
 import { RosterPanel } from './components/RosterPanel';
 
 export default function App() {
-  const [zoomSetting, setZoomSetting] = useState<ZoomSetting>(() =>
-    StorageManager.getZoom()
-  );
   const [isAutoStroll, setIsAutoStroll] = useState(false);
   const prefs = usePrefs();
   const [toast, setToast] = useState<string | null>(() =>
@@ -29,9 +29,6 @@ export default function App() {
   const [isWardrobeOpen, setIsWardrobeOpen] = useState(false);
 
   useEffect(() => {
-    // Sync current setting on mount
-    setZoomSetting(StorageManager.getZoom());
-
     // Sync Auto-Stroll and Vibe states on manual input
     const unsubInput = gameEvents.on('localInput', () => {
       if (gameEngine?.player) {
@@ -65,16 +62,14 @@ export default function App() {
   }, []);
 
   const handleCycleZoom = () => {
-    let next: ZoomSetting;
     if (gameEngine?.camera) {
-      next = gameEngine.camera.cycleZoom();
+      gameEngine.camera.cycleZoom();
     } else {
       const order: ZoomSetting[] = ['auto', 2, 3, 4];
-      const idx = order.indexOf(zoomSetting);
-      next = order[(idx + 1) % order.length];
-      StorageManager.setZoom(next);
+      const idx = order.indexOf(prefs.zoom);
+      const next = order[(idx + 1) % order.length];
+      StorageManager.update({ zoom: next });
     }
-    setZoomSetting(next);
   };
 
   const handleToggleAutoStroll = () => {
@@ -176,7 +171,7 @@ export default function App() {
             borderRadius: '4px',
           }}
         >
-          Zoom: {zoomSetting}
+          Zoom: {prefs.zoom}
         </button>
         <button
           type="button"

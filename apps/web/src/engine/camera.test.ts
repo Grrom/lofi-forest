@@ -1,11 +1,19 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { pickZoom, Camera } from './camera';
-import { StorageManager } from './storage';
+import { StorageManager } from '../systems/StorageManager';
 import { WORLD_WIDTH_PX, WORLD_HEIGHT_PX } from '@lofi/shared';
 
 describe('Camera & pickZoom', () => {
   beforeEach(() => {
     localStorage.clear();
+    StorageManager.reset();
+  });
+
+  // Acceptance criterion:
+  // Test: with empty storage, the camera starts in zoom setting 'auto'.
+  it('with empty storage, the camera starts in zoom setting "auto"', () => {
+    const cam = new Camera();
+    expect(cam.zoomSetting).toBe('auto');
   });
 
   // Acceptance criterion:
@@ -25,23 +33,23 @@ describe('Camera & pickZoom', () => {
     // Cycle to 2
     expect(cam.cycleZoom()).toBe(2);
     expect(cam.zoom).toBe(2);
-    expect(StorageManager.getZoom()).toBe(2);
+    expect(StorageManager.get().zoom).toBe(2);
 
     // Cycle to 3
     expect(cam.cycleZoom()).toBe(3);
     expect(cam.zoom).toBe(3);
-    expect(StorageManager.getZoom()).toBe(3);
+    expect(StorageManager.get().zoom).toBe(3);
 
     // Cycle to 4
     expect(cam.cycleZoom()).toBe(4);
     expect(cam.zoom).toBe(4);
-    expect(StorageManager.getZoom()).toBe(4);
+    expect(StorageManager.get().zoom).toBe(4);
 
     // Cycle back to auto
     expect(cam.cycleZoom()).toBe('auto');
     expect(cam.zoomSetting).toBe('auto');
     expect(cam.zoom).toBe(3); // Auto picks 3 for 1280x720
-    expect(StorageManager.getZoom()).toBe('auto');
+    expect(StorageManager.get().zoom).toBe('auto');
   });
 
   it('camera is Math.rounded every frame and clamped to the map', () => {

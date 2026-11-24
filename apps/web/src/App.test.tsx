@@ -398,4 +398,33 @@ describe('apps/web HUD and Audio UI', () => {
     expect(screen.getByText('24:59')).toBeDefined();
     vi.useRealTimers();
   });
+
+  // Acceptance criterion:
+  // Test: cycling the HUD zoom toggle to 3 stores zoom: 3 inside the lofi-forest:v1 JSON, and a fresh StorageManager instance then reads zoom === 3.
+  it('cycling the HUD zoom toggle to 3 stores zoom: 3 inside the lofi-forest:v1 JSON, and a fresh StorageManager instance then reads zoom === 3', () => {
+    localStorage.clear();
+    StorageManager.reset();
+
+    render(<App />);
+    const zoomBtn = screen.getByRole('button', { name: /toggle camera zoom/i });
+    expect(zoomBtn.textContent).toContain('Zoom: auto');
+
+    // Cycle: 'auto' -> 2
+    fireEvent.click(zoomBtn);
+    expect(zoomBtn.textContent).toContain('Zoom: 2');
+
+    // Cycle: 2 -> 3
+    fireEvent.click(zoomBtn);
+    expect(zoomBtn.textContent).toContain('Zoom: 3');
+
+    // Assert stored in lofi-forest:v1
+    const storedRaw = localStorage.getItem('lofi-forest:v1');
+    expect(storedRaw).not.toBeNull();
+    const stored = JSON.parse(storedRaw!);
+    expect(stored.zoom).toBe(3);
+
+    // Assert fresh StorageManager instance reads zoom === 3
+    const fresh = new StorageManager();
+    expect(fresh.get().zoom).toBe(3);
+  });
 });
