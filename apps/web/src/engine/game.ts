@@ -13,6 +13,8 @@ import { Atmosphere } from './atmosphere';
 import { gameEvents } from './events';
 import { LocalPlayer } from '../entities/LocalPlayer';
 import { updateEmoteBubbles } from '../entities/EmoteBubble';
+import { FastTravelSystem, defaultFastTravelSystem } from '../systems/FastTravelSystem';
+import { updateActiveBursts, clearActiveBursts } from './particles';
 import type { AssetManifest, EmoteId, PomoBadge, ZoneId } from '@lofi/shared';
 import { pomodoroController } from '../systems/PomodoroController';
 
@@ -53,6 +55,7 @@ export class GameEngine {
   public mapRenderer!: TiledMapRenderer;
   public atmosphere!: Atmosphere;
   public player!: LocalPlayer;
+  public fastTravelSystem!: FastTravelSystem;
   public isDebug = false;
 
   private currentZone: ZoneId = 'forest';
@@ -148,11 +151,16 @@ export class GameEngine {
     );
 
     // 8. LocalPlayer setup (camera follows player)
+    defaultFastTravelSystem.setMap(this.parsedMap);
     this.player = new LocalPlayer(
       this.parsedMap,
       this.camera,
       this.layers
     );
+    defaultFastTravelSystem.setPlayer(this.player);
+    this.fastTravelSystem = defaultFastTravelSystem;
+    this.player.fastTravelSystem = defaultFastTravelSystem;
+
     this.currentZone = this.player.zone;
     this.atmosphere.setZone(this.player.zone);
 
@@ -296,6 +304,9 @@ export class GameEngine {
 
     // Update active emote bubbles
     updateEmoteBubbles(now);
+
+    // Update active particle bursts
+    updateActiveBursts(now);
   }
 
   public triggerEmote(emoteId: EmoteId, now: number = Date.now()): boolean {
@@ -316,6 +327,7 @@ export class GameEngine {
       this.updateIntervalId = null;
     }
     this.player?.destroy();
+    clearActiveBursts();
     this.app?.destroy(true, { children: true, texture: false });
   }
 }
