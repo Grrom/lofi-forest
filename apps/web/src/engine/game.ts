@@ -330,6 +330,32 @@ export class GameEngine {
     return this.player?.triggerEmote(emoteId, now) ?? false;
   }
 
+  public async connectPublicLobby(): Promise<void> {
+    if (typeof window !== 'undefined' && window.location) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', 'public');
+      window.history.pushState({}, '', url.toString());
+    }
+
+    if (this.transport) {
+      this.transport.disconnect();
+    }
+    if (this.netSync) {
+      this.netSync.destroy();
+    }
+
+    this.transport = createTransport('?room=public');
+    await this.transport.connect();
+
+    if (this.player && this.layers) {
+      this.netSync = new NetSync(this.transport, this.player, {
+        layers: this.layers,
+        worldUiLayer: this.layers.worldUiLayer,
+        entityLayer: this.layers.entityLayer,
+      });
+    }
+  }
+
   public destroy(): void {
     if (this.unsubZoneChanged) {
       this.unsubZoneChanged();
