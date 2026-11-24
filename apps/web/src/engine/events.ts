@@ -11,6 +11,7 @@ export interface GameEventPayloads {
   playersChanged: { players: Map<string, PlayerNetState> };
   connectionStatusChanged: { status: TransportStatus };
   retryConnection: Record<string, never>;
+  toggleOverlay: Record<string, never>;
 }
 
 export type GameEventName = keyof GameEventPayloads;

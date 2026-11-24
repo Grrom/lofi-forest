@@ -16,10 +16,14 @@ import { updateEmoteBubbles } from '../entities/EmoteBubble';
 import { FastTravelSystem, defaultFastTravelSystem } from '../systems/FastTravelSystem';
 import { updateActiveBursts, clearActiveBursts } from './particles';
 import type { AssetManifest, EmoteId, PomoBadge, ZoneId } from '@lofi/shared';
+import { parseSpectatorParams, type SpectatorParams } from '@lofi/shared';
 import { pomodoroController } from '../systems/PomodoroController';
 import { createTransport } from '../net/createTransport';
 import type { TransportAdapter } from '../net/TransportAdapter';
 import { NetSync } from '../net/NetSync';
+import { generateStarterMap } from './starterMapData';
+import { SpectatorCycleController } from '../systems/spectator';
+import { audioEngine } from '../audio/AudioEngine';
 
 export interface PomoEffectTargets {
   player?: {
@@ -63,12 +67,77 @@ export class GameEngine {
   public netSync?: NetSync;
   public isDebug = false;
 
+  public isSpectator = false;
+  public spectatorParams: SpectatorParams = parseSpectatorParams('');
+  public spectatorCycle?: SpectatorCycleController;
+  public isOverlayVisible = false;
+
   private currentZone: ZoneId = 'forest';
   private keysPressed = new Set<string>();
   private lastTickMs = Date.now();
   private updateIntervalId: any = null;
   private unsubZoneChanged?: () => void;
   private unsubPomo?: () => void;
+  private keydownListener?: (e: KeyboardEvent) => void;
+
+  constructor() {
+    this.camera = new Camera();
+    try {
+      this.parsedMap = parseTiledMap(generateStarterMap());
+    } catch {}
+    this.attachSpectatorHotkeys();
+  }
+
+  private attachSpectatorHotkeys(): void {
+    if (typeof window === 'undefined' || this.keydownListener) return;
+    this.keydownListener = (e: KeyboardEvent) => {
+      this.handleKeyDown(e);
+    };
+    window.addEventListener('keydown', this.keydownListener);
+  }
+
+  public handleKeyDown(
+    e: KeyboardEvent | { key: string; preventDefault?: () => void }
+  ): void {
+    const key = e.key;
+    if (key === 'F1') {
+      e.preventDefault?.();
+      this.setSpectatorZone('forest');
+    } else if (key === 'F2') {
+      e.preventDefault?.();
+      this.setSpectatorZone('lake');
+    } else if (key === 'F3') {
+      e.preventDefault?.();
+      this.setSpectatorZone('pub');
+    } else if (key === 'h' || key === 'H') {
+      e.preventDefault?.();
+      this.toggleOverlay();
+    }
+  }
+
+  public toggleOverlay(): boolean {
+    this.isOverlayVisible = !this.isOverlayVisible;
+    gameEvents.emit('toggleOverlay', {});
+    return this.isOverlayVisible;
+  }
+
+  public setSpectatorZone(zone: ZoneId): void {
+    this.currentZone = zone;
+    this.atmosphere?.setZone(zone);
+    audioEngine.setZone(zone);
+    gameEvents.emit('zoneChanged', { zone });
+
+    if (!this.parsedMap) {
+      try {
+        this.parsedMap = parseTiledMap(generateStarterMap());
+      } catch {}
+    }
+    const focus = this.parsedMap?.cameraFoci?.find((f) => f.zone === zone);
+    if (focus) {
+      this.camera.target = focus;
+      this.camera.lookAt(focus.x, focus.y);
+    }
+  }
 
   public async init(canvasContainer?: HTMLElement): Promise<Application> {
     // 1. Ensure nearest neighbor scaleMode
@@ -132,7 +201,6 @@ export class GameEngine {
 
     if (!mapJson) {
       // Fallback: dynamic generation if fetch fails
-      const { generateStarterMap } = await import('./starterMapData');
       mapJson = generateStarterMap();
     }
 
@@ -155,52 +223,89 @@ export class GameEngine {
       this.parsedMap.campfires
     );
 
-    // 8. LocalPlayer setup (camera follows player)
-    defaultFastTravelSystem.setMap(this.parsedMap);
-    this.player = new LocalPlayer(
-      this.parsedMap,
-      this.camera,
-      this.layers
-    );
-    defaultFastTravelSystem.setPlayer(this.player);
-    this.fastTravelSystem = defaultFastTravelSystem;
-    this.player.fastTravelSystem = defaultFastTravelSystem;
+    // 8. LocalPlayer / Spectator setup
+    const search =
+      typeof window !== 'undefined' ? window.location?.search : undefined;
+    this.spectatorParams = parseSpectatorParams(search);
+    this.isSpectator = this.spectatorParams.spectator;
+    this.isOverlayVisible = this.spectatorParams.overlay;
 
-    this.currentZone = this.player.zone;
-    this.atmosphere.setZone(this.player.zone);
-
-    this.unsubZoneChanged = gameEvents.on('zoneChanged', ({ zone }) => {
-      this.currentZone = zone;
-      this.atmosphere.setZone(zone);
-    });
-
-    // 8b. Initial Pomodoro sync and event subscription
-    const initialBadge = pomodoroController.localBadge();
-    if (initialBadge === 'focus') {
-      this.atmosphere.setVignette(true);
-    }
-
-    let prevBadge: PomoBadge = initialBadge;
-    this.unsubPomo = gameEvents.on('pomoPhaseChanged', ({ phase }) => {
-      applyPomoPhaseEffects(prevBadge, phase, {
-        player: this.player,
-        atmosphere: this.atmosphere,
+    if (this.isSpectator) {
+      // Audio: on load, call AudioEngine.unlockNow() (OBS allows autoplay)
+      audioEngine.unlockNow().catch((err) => {
+        console.warn('[GameEngine] unlockNow error:', err);
       });
-      prevBadge = phase;
-    });
 
-    // 8c. Transport & NetSync setup
-    this.transport = createTransport();
-    await this.transport.connect();
-    this.netSync = new NetSync(this.transport, this.player, {
-      layers: this.layers,
-      worldUiLayer: this.layers.worldUiLayer,
-      entityLayer: this.layers.entityLayer,
-    });
+      // Camera: park on camera_focus for the zone
+      this.setSpectatorZone(this.spectatorParams.zone);
+
+      // Spectator stream-cycle controller
+      this.spectatorCycle = new SpectatorCycleController({
+        focusMin: this.spectatorParams.focusMin,
+        breakMin: this.spectatorParams.breakMin,
+        effects: {
+          setVignette: (on) => this.atmosphere?.setVignette(on),
+          pulseGlow: () => this.atmosphere?.pulseGlow(),
+          scheduleChime: (endsAtMs) => audioEngine.scheduleChime(endsAtMs),
+        },
+      });
+
+      // Read-only spectator transport
+      this.transport = createTransport('?room=public&spectator=1');
+      await this.transport.connect();
+      this.netSync = new NetSync(this.transport, {
+        layers: this.layers,
+        worldUiLayer: this.layers.worldUiLayer,
+        entityLayer: this.layers.entityLayer,
+        hideNames: this.spectatorParams.hideNames,
+      });
+    } else {
+      defaultFastTravelSystem.setMap(this.parsedMap);
+      this.player = new LocalPlayer(
+        this.parsedMap,
+        this.camera,
+        this.layers
+      );
+      defaultFastTravelSystem.setPlayer(this.player);
+      this.fastTravelSystem = defaultFastTravelSystem;
+      this.player.fastTravelSystem = defaultFastTravelSystem;
+
+      this.currentZone = this.player.zone;
+      this.atmosphere.setZone(this.player.zone);
+
+      this.unsubZoneChanged = gameEvents.on('zoneChanged', ({ zone }) => {
+        this.currentZone = zone;
+        this.atmosphere.setZone(zone);
+      });
+
+      // 8b. Initial Pomodoro sync and event subscription
+      const initialBadge = pomodoroController.localBadge();
+      if (initialBadge === 'focus') {
+        this.atmosphere.setVignette(true);
+      }
+
+      let prevBadge: PomoBadge = initialBadge;
+      this.unsubPomo = gameEvents.on('pomoPhaseChanged', ({ phase }) => {
+        applyPomoPhaseEffects(prevBadge, phase, {
+          player: this.player,
+          atmosphere: this.atmosphere,
+        });
+        prevBadge = phase;
+      });
+
+      // 8c. Transport & NetSync setup
+      this.transport = createTransport();
+      await this.transport.connect();
+      this.netSync = new NetSync(this.transport, this.player, {
+        layers: this.layers,
+        worldUiLayer: this.layers.worldUiLayer,
+        entityLayer: this.layers.entityLayer,
+      });
+    }
 
     // Tap / Click-to-walk on canvas
     this.app.canvas.addEventListener('pointerdown', (e: PointerEvent) => {
-      if (this.isDebug) return;
+      if (this.isDebug || this.isSpectator || !this.player) return;
       if (Date.now() - this.player.lastPromptInteractTime < 200) return;
 
       const rect = this.app.canvas.getBoundingClientRect();
@@ -357,6 +462,14 @@ export class GameEngine {
   }
 
   public destroy(): void {
+    if (this.spectatorCycle) {
+      this.spectatorCycle.destroy();
+      this.spectatorCycle = undefined;
+    }
+    if (this.keydownListener && typeof window !== 'undefined') {
+      window.removeEventListener('keydown', this.keydownListener);
+      this.keydownListener = undefined;
+    }
     if (this.unsubZoneChanged) {
       this.unsubZoneChanged();
       this.unsubZoneChanged = undefined;

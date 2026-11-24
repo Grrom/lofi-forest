@@ -308,4 +308,49 @@ describe('NetSync', () => {
 
     netSync.destroy();
   });
+
+  // Acceptance criterion:
+  // Test: with hideNames=1, remote avatars get setName(null).
+  it('with hideNames=1, remote avatars get setName(null)', () => {
+    const netSync = new NetSync(mockTransport, {
+      autoStart: false,
+      hideNames: true,
+    });
+
+    const p1: PlayerNetState = {
+      id: 'peer-names-test',
+      name: 'HiddenWanderer',
+      x: 100,
+      y: 100,
+      zone: 'forest',
+      facing: 'down',
+      action: 'idle',
+      outfit: { baseId: 'char_base', hatId: 'none', colorHex: '#4a7c59' },
+      pomo: 'none',
+    };
+
+    mockTransport.playersCb!(new Map([['peer-names-test', p1]]));
+    const rp = netSync.remotePlayers.get('peer-names-test')!;
+    expect(rp).toBeDefined();
+
+    // Verify avatar name is null and nameplate is not visible
+    expect(rp.getName()).toBeNull();
+    expect(rp.nameplate.visible).toBe(false);
+
+    // Spy on setName
+    const setNameSpy = vi.spyOn(rp, 'setName');
+
+    // Update state with a new player name
+    rp.updateState({
+      ...p1,
+      name: 'NewNameAttempt',
+      x: 105,
+    });
+
+    expect(setNameSpy).toHaveBeenCalledWith(null);
+    expect(rp.getName()).toBeNull();
+    expect(rp.nameplate.visible).toBe(false);
+
+    netSync.destroy();
+  });
 });

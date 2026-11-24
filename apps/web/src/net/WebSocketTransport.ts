@@ -6,7 +6,7 @@ import type {
   Outfit,
   PlayerNetState,
 } from '@lofi/shared';
-import { parseServerMessage } from '@lofi/shared';
+import { parseServerMessage, parseSpectatorParams } from '@lofi/shared';
 import type {
   TransportAdapter,
   TransportMode,
@@ -53,7 +53,7 @@ export class WebSocketTransport implements TransportAdapter {
     this.spectator =
       options.spectator ??
       (typeof window !== 'undefined' && window.location
-        ? new URLSearchParams(window.location.search).get('spectator') === '1'
+        ? parseSpectatorParams(window.location.search).spectator
         : false);
     this.random = options.random ?? Math.random;
     if (options.name) this.cachedName = options.name;

@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { parseSpectatorParams } from '@lofi/shared';
+import { StreamOverlay } from './components/StreamOverlay';
 import {
   usePrefs,
   StorageManager,
@@ -21,7 +23,20 @@ import { RosterPanel } from './components/RosterPanel';
 import { createTransport } from './net/createTransport';
 import type { TransportStatus } from './net/TransportAdapter';
 
-export default function App() {
+export default function App({ search }: { search?: string } = {}) {
+  const spectatorParams = useMemo(() => {
+    const s =
+      search !== undefined
+        ? search
+        : typeof window !== 'undefined'
+          ? window.location?.search
+          : '';
+    return parseSpectatorParams(s);
+  }, [search]);
+
+  const [isOverlayVisible, setIsOverlayVisible] = useState(
+    spectatorParams.overlay
+  );
   const [isAutoStroll, setIsAutoStroll] = useState(false);
   const prefs = usePrefs();
   const [toast, setToast] = useState<string | null>(() =>
@@ -60,11 +75,16 @@ export default function App() {
       setConnectionStatus(status);
     });
 
+    const unsubToggleOverlay = gameEvents.on('toggleOverlay', () => {
+      setIsOverlayVisible((prev) => !prev);
+    });
+
     return () => {
       unsubInput();
       unsubToast();
       unsubGameToast();
       unsubStatus();
+      unsubToggleOverlay();
       if (toastTimer) clearTimeout(toastTimer);
     };
   }, []);
@@ -136,6 +156,15 @@ export default function App() {
       setIsVibing((prev) => !prev);
     }
   };
+  if (spectatorParams.spectator) {
+    return isOverlayVisible ? (
+      <StreamOverlay
+        focusMin={spectatorParams.focusMin}
+        breakMin={spectatorParams.breakMin}
+      />
+    ) : null;
+  }
+
   return (
     <>
     <div
