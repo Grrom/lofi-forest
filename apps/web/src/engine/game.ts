@@ -12,9 +12,10 @@ import {
 import { Atmosphere } from './atmosphere';
 import { gameEvents } from './events';
 import { LocalPlayer } from '../entities/LocalPlayer';
+import { updateEmoteBubbles } from '../entities/EmoteBubble';
 import { FastTravelSystem, defaultFastTravelSystem } from '../systems/FastTravelSystem';
 import { updateActiveBursts, clearActiveBursts } from './particles';
-import type { AssetManifest, PomoBadge, ZoneId } from '@lofi/shared';
+import type { AssetManifest, EmoteId, PomoBadge, ZoneId } from '@lofi/shared';
 import { pomodoroController } from '../systems/PomodoroController';
 
 export interface PomoEffectTargets {
@@ -301,8 +302,15 @@ export class GameEngine {
     // Update atmosphere (glow flicker, pulse, rain, vignette)
     this.atmosphere?.update(this.camera, now);
 
+    // Update active emote bubbles
+    updateEmoteBubbles(now);
+
     // Update active particle bursts
     updateActiveBursts(now);
+  }
+
+  public triggerEmote(emoteId: EmoteId, now: number = Date.now()): boolean {
+    return this.player?.triggerEmote(emoteId, now) ?? false;
   }
 
   public destroy(): void {

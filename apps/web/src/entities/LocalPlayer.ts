@@ -1,5 +1,12 @@
 import { Container, Graphics, Rectangle, Sprite, Text } from 'pixi.js';
-import type { Facing, Outfit, PlayerAction, PomoBadge, ZoneId } from '@lofi/shared';
+import type {
+  EmoteId,
+  Facing,
+  Outfit,
+  PlayerAction,
+  PomoBadge,
+  ZoneId,
+} from '@lofi/shared';
 import { PLAYER_SPEED_PX_S, TILE_SIZE } from '@lofi/shared';
 import type { WorldLayers } from '../engine/layers';
 import type { Camera } from '../engine/camera';
@@ -22,7 +29,21 @@ import { spawnParticleBurst } from '../engine/particles';
 import { PlayerAvatar } from './PlayerAvatar';
 import { AfkDetector } from '../systems/AfkDetector';
 import { StorageManager } from '../systems/StorageManager';
+import { showEmote, type EmoteBubble } from './EmoteBubble';
 import { pomodoroController } from '../systems/PomodoroController';
+
+export { showEmote, type EmoteBubble } from './EmoteBubble';
+
+export function getEmoteFromKey(code: string, key?: string): EmoteId | null {
+  const k = key || code;
+  if (code === 'Digit1' || code === '1' || code === 'Numpad1' || k === '1') return 'heart';
+  if (code === 'Digit2' || code === '2' || code === 'Numpad2' || k === '2') return 'coffee';
+  if (code === 'Digit3' || code === '3' || code === 'Numpad3' || k === '3') return 'music';
+  if (code === 'Digit4' || code === '4' || code === 'Numpad4' || k === '4') return 'wave';
+  if (code === 'Digit5' || code === '5' || code === 'Numpad5' || k === '5') return 'zzz';
+  if (code === 'Digit6' || code === '6' || code === 'Numpad6' || k === '6') return 'sparkle';
+  return null;
+}
 
 export interface LocalPlayerOptions {
   initialX?: number;
@@ -89,6 +110,7 @@ export class LocalPlayer {
   private lastDoorId: string | null = null;
   private celebrateUntilMs = 0;
   private previousActionBeforeCelebrate: PlayerAction = 'idle';
+  private lastEmoteTime = -Infinity;
   private unsubStorage?: () => void;
   private unsubPomo?: () => void;
 
@@ -151,7 +173,7 @@ export class LocalPlayer {
 
     // Bind DOM keyboard events if in browser
     if (typeof window !== 'undefined') {
-      this.onKeyDownBound = (e: KeyboardEvent) => this.handleKeyDown(e.code);
+      this.onKeyDownBound = (e: KeyboardEvent) => this.handleKeyDown(e.code, e.key);
       this.onKeyUpBound = (e: KeyboardEvent) => this.handleKeyUp(e.code);
       window.addEventListener('keydown', this.onKeyDownBound);
       window.addEventListener('keyup', this.onKeyUpBound);
@@ -169,6 +191,7 @@ export class LocalPlayer {
       facing: this.facing,
       action: this.action,
     });
+    this.avatar.worldUiLayer = this.layers.worldUiLayer;
     this.avatar.setStatus(pomodoroController.localBadge());
     this.avatar.position.set(Math.round(this.x), Math.round(this.y));
     (this.avatar as any).footY = this.y;
@@ -251,12 +274,43 @@ export class LocalPlayer {
     };
   }
 
-  public handleKeyDown(code: string): void {
+  public triggerEmote(emoteId: EmoteId, now: number = Date.now()): boolean {
+    if (now - this.lastEmoteTime < 1000) {
+      return false;
+    }
+    this.lastEmoteTime = now;
+
+    if (this.afkDetector?.isSleeping) {
+      this.afkDetector.wakeUp();
+    }
+
+    gameEvents.emit('localInput', {});
+    gameEvents.emit('localEmote', { emote: emoteId });
+
+    if (this.avatar) {
+      showEmote(this.avatar, emoteId, this.layers?.worldUiLayer);
+    }
+
+    return true;
+  }
+
+  public handleKeyDown(
+    code: string,
+    key?: string,
+    now: number = Date.now()
+  ): void {
     if (isInputFocused()) return;
 
     // Manual input cancels auto-stroll immediately
     if (this.isAutoStroll) {
       this.setAutoStroll(false);
+    }
+
+    // Emote hotkeys 1-6
+    const emoteId = getEmoteFromKey(code, key);
+    if (emoteId) {
+      this.triggerEmote(emoteId, now);
+      return;
     }
 
     if (code === 'KeyV') {
