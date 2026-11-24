@@ -10,6 +10,7 @@ import { defaultFastTravelSystem } from './systems/FastTravelSystem';
 import { generateStarterMap } from './engine/starterMapData';
 import { parseTiledMap } from './engine/tiled';
 import { pomodoroController } from './systems/PomodoroController';
+import { parseSpectatorParams } from '@lofi/shared';
 
 describe('apps/web HUD and Audio UI', () => {
   beforeEach(() => {
@@ -486,6 +487,83 @@ describe('apps/web HUD and Audio UI', () => {
   });
 
   // Acceptance criterion:
+  // Test: in spectator mode the wardrobe, mixer, fast travel, emote bar, roster, room controls and Pomodoro card are not rendered, and no local avatar exists.
+  it('in spectator mode the wardrobe, mixer, fast travel, emote bar, roster, room controls and Pomodoro card are not rendered, and no local avatar exists', async () => {
+    await gameEngine.setupSession(
+      parseSpectatorParams(
+        '?room=public&mode=spectator&zone=forest&hideNames=1&overlay=1'
+      )
+    );
+
+    render(
+      <App search="?room=public&mode=spectator&zone=forest&hideNames=1&overlay=1" />
+    );
+
+    // 1. Wardrobe is not rendered
+    expect(
+      screen.queryByRole('button', { name: /toggle wardrobe/i })
+    ).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /wardrobe/i })).toBeNull();
+
+    // 2. Mixer is not rendered
+    expect(screen.queryByRole('heading', { name: /mixer/i })).toBeNull();
+    expect(screen.queryByLabelText(/master volume/i)).toBeNull();
+
+    // 3. Fast travel is not rendered
+    expect(screen.queryByText('Fast Travel')).toBeNull();
+
+    // 4. Emote bar is not rendered
+    expect(screen.queryByRole('toolbar', { name: /emote/i })).toBeNull();
+
+    // 5. Roster is not rendered
+    expect(screen.queryByText(/players \(\d+\)/i)).toBeNull();
+
+    // 6. Room controls are not rendered
+    expect(
+      screen.queryByRole('button', { name: /join public lobby/i })
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /toggle auto-stroll/i })
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /toggle vibe/i })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /toggle camera zoom/i })
+    ).toBeNull();
+
+    // 7. Personal Pomodoro card is not rendered
+    expect(
+      screen.queryByRole('button', { name: /start pomodoro/i })
+    ).toBeNull();
+    expect(screen.queryByText('Pomodoro')).toBeNull();
+
+    // 8. Sound pill is not rendered
+    expect(screen.queryByText('Click to enable sound')).toBeNull();
+
+    // 9. No local avatar exists
+    expect(gameEngine.player).toBeUndefined();
+
+    // 10. Overlay is rendered (since overlay=1)
+    expect(
+      screen.getByRole('complementary', { name: /stream overlay/i })
+    ).toBeDefined();
+
+    // 11. H toggles the overlay
+    const { gameEvents } = await import('./engine/events');
+    act(() => {
+      gameEvents.emit('toggleOverlay', {});
+    });
+    expect(
+      screen.queryByRole('complementary', { name: /stream overlay/i })
+    ).toBeNull();
+
+    act(() => {
+      gameEvents.emit('toggleOverlay', {});
+    });
+    expect(
+      screen.getByRole('complementary', { name: /stream overlay/i })
+    ).toBeDefined();
+  });
+
   // Client test: in public mode the HUD shows the server-assigned name and the wardrobe hint, and StorageManager profile.name is unchanged.
   it('Client test: in public mode the HUD shows the server-assigned name and the wardrobe hint, and StorageManager profile.name is unchanged', async () => {
     StorageManager.reset();

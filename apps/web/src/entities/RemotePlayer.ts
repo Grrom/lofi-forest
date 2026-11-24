@@ -7,19 +7,21 @@ export interface RemotePlayerOptions extends PlayerAvatarOptions {
   zone?: ZoneId;
   x?: number;
   y?: number;
+  hideNames?: boolean;
 }
 
 export class RemotePlayer extends PlayerAvatar {
   public readonly id: string;
   public zone: ZoneId;
   public readonly buffer: InterpolationBuffer;
+  public hideNames?: boolean;
 
   constructor(state: PlayerNetState | RemotePlayerOptions) {
     super({
       outfit: state.outfit,
       facing: state.facing,
       action: state.action,
-      name: state.name,
+      name: (state as any).hideNames ? null : state.name,
       status: (state as PlayerNetState).pomo ?? (state as any).status ?? 'none',
     });
 
@@ -27,6 +29,10 @@ export class RemotePlayer extends PlayerAvatar {
     this.id = state.id;
     this.zone = state.zone ?? 'forest';
     this.buffer = new InterpolationBuffer();
+    if ((state as any).hideNames) {
+      this.hideNames = true;
+      this.setName(null);
+    }
 
     const initialX = state.x ?? (state as any).initialX ?? 0;
     const initialY = state.y ?? (state as any).initialY ?? 0;
@@ -53,7 +59,11 @@ export class RemotePlayer extends PlayerAvatar {
     this.setAction(state.action);
     this.setFacing(state.facing);
     this.setOutfit(state.outfit);
-    this.setName(state.name);
+    if (this.hideNames) {
+      this.setName(null);
+    } else {
+      this.setName(state.name);
+    }
     this.setStatus(state.pomo);
   }
 
