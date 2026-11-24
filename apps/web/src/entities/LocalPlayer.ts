@@ -1,5 +1,5 @@
 import { Container, Graphics, Rectangle, Sprite, Text } from 'pixi.js';
-import type { Facing, PlayerAction, ZoneId } from '@lofi/shared';
+import type { Facing, Outfit, PlayerAction, ZoneId } from '@lofi/shared';
 import { PLAYER_SPEED_PX_S, TILE_SIZE } from '@lofi/shared';
 import type { WorldLayers } from '../engine/layers';
 import type { Camera } from '../engine/camera';
@@ -17,6 +17,9 @@ import {
   PLAYER_COLLISION_RADIUS,
 } from '../systems/collision';
 import { findPath } from '../systems/pathfinding';
+import { PlayerAvatar } from './PlayerAvatar';
+import { AfkDetector } from '../systems/AfkDetector';
+import { StorageManager } from '../systems/StorageManager';
 
 export interface LocalPlayerOptions {
   initialX?: number;
@@ -50,6 +53,8 @@ export class LocalPlayer {
 
   public container?: Container;
   public sprite?: Sprite;
+  public avatar?: PlayerAvatar;
+  public afkDetector?: AfkDetector;
   public promptContainer?: Container;
 
   public map: ParsedTiledMap;
@@ -62,6 +67,7 @@ export class LocalPlayer {
   private strollWaitUntilMs = 0;
   private doorCooldownUntilMs = 0;
   private lastDoorId: string | null = null;
+  private unsubStorage?: () => void;
 
   private onKeyDownBound?: (e: KeyboardEvent) => void;
   private onKeyUpBound?: (e: KeyboardEvent) => void;
@@ -101,6 +107,9 @@ export class LocalPlayer {
       this.zone = this.getZoneAt(this.x, this.y) || 'forest';
     }
 
+    // Initialize AfkDetector
+    this.afkDetector = new AfkDetector(this);
+
     // Setup Pixi containers if not skipped
     if (!options?.skipPixi && layers) {
       this.setupPixiVisuals();
@@ -118,18 +127,31 @@ export class LocalPlayer {
   private setupPixiVisuals(): void {
     if (!this.layers) return;
 
-    this.container = new Container();
-    this.container.label = 'localPlayer';
-    this.container.position.set(Math.round(this.x), Math.round(this.y));
-    (this.container as any).footY = this.y;
-    this.container.zIndex = Math.round(this.y);
+    const prefs = StorageManager.get();
+    this.avatar = new PlayerAvatar({
+      outfit: prefs.profile.outfit,
+      name: prefs.profile.name,
+      showNames: prefs.showNames,
+      facing: this.facing,
+      action: this.action,
+    });
+    this.avatar.position.set(Math.round(this.x), Math.round(this.y));
+    (this.avatar as any).footY = this.y;
+    this.avatar.zIndex = Math.round(this.y);
 
-    const baseTexture = assetLoader.getTextureSync('char_base');
-    this.sprite = new Sprite(baseTexture);
-    this.sprite.anchor.set(0.5, 1.0);
-    this.container.addChild(this.sprite);
+    this.container = this.avatar;
+    this.sprite = this.avatar.baseSprite;
 
-    this.layers.entityLayer.addChild(this.container);
+    this.layers.entityLayer.addChild(this.avatar);
+
+    // Subscribe to StorageManager to update avatar immediately when wardrobe/prefs change
+    this.unsubStorage = StorageManager.subscribe((newPrefs) => {
+      if (this.avatar) {
+        this.avatar.setOutfit(newPrefs.profile.outfit);
+        this.avatar.setName(newPrefs.profile.name);
+        this.avatar.setShowNames(newPrefs.showNames);
+      }
+    });
 
     // [E] prompt container in worldUiLayer
     this.promptContainer = this.createPromptContainer();
@@ -207,6 +229,11 @@ export class LocalPlayer {
       } else {
         this.sitNearestSeat();
       }
+      return;
+    }
+
+    if (code === 'KeyV') {
+      this.action = this.action === 'vibe' ? 'idle' : 'vibe';
       return;
     }
 
@@ -526,7 +553,7 @@ export class LocalPlayer {
         if (this.promptContainer) {
           this.promptContainer.visible = false;
         }
-        this.syncVisuals();
+        this.syncVisuals(cappedDt);
         return;
       }
     }
@@ -682,24 +709,47 @@ export class LocalPlayer {
     }
 
     // Sync Pixi visuals and camera
-    this.syncVisuals();
+    this.syncVisuals(cappedDt);
     this.camera?.lookAt(this.x, this.y);
   }
 
-  private syncVisuals(): void {
-    if (!this.container) return;
+  private syncVisuals(dt: number = 0.016): void {
+    if (this.avatar) {
+      this.avatar.position.set(Math.round(this.x), Math.round(this.y));
+      (this.avatar as any).footY = this.y;
+      this.avatar.zIndex = Math.round(this.y);
+      this.avatar.setFacing(this.facing);
+      this.avatar.setAction(this.action);
+      this.avatar.update(dt, Date.now());
+    } else if (this.container) {
+      this.container.position.set(Math.round(this.x), Math.round(this.y));
+      (this.container as any).footY = this.y;
+      this.container.zIndex = Math.round(this.y);
 
-    this.container.position.set(Math.round(this.x), Math.round(this.y));
-    (this.container as any).footY = this.y;
-    this.container.zIndex = Math.round(this.y);
-
-    if (this.sprite) {
-      if (this.facing === 'left') {
-        this.sprite.scale.x = -1;
-      } else {
-        this.sprite.scale.x = 1;
+      if (this.sprite) {
+        if (this.facing === 'left') {
+          this.sprite.scale.x = -1;
+        } else {
+          this.sprite.scale.x = 1;
+        }
       }
     }
+  }
+
+  public celebrate(): void {
+    this.avatar?.celebrate();
+  }
+
+  public setStatus(status: 'none' | 'focus' | 'break'): void {
+    this.avatar?.setStatus(status);
+  }
+
+  public setOutfit(outfit: Outfit): void {
+    this.avatar?.setOutfit(outfit);
+  }
+
+  public setName(name: string | null): void {
+    this.avatar?.setName(name);
   }
 
   public destroy(): void {
@@ -711,6 +761,12 @@ export class LocalPlayer {
         window.removeEventListener('keyup', this.onKeyUpBound);
       }
     }
+    if (this.unsubStorage) {
+      this.unsubStorage();
+      this.unsubStorage = undefined;
+    }
+    this.afkDetector?.destroy();
+    this.avatar?.destroy();
     this.container?.destroy({ children: true });
     this.promptContainer?.destroy({ children: true });
   }

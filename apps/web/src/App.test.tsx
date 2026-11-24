@@ -101,4 +101,55 @@ describe('apps/web HUD', () => {
 
     (gameEngine as any).player = undefined;
   });
+
+  it('renders the Vibe HUD toggle and allows toggling vibe', () => {
+    const mockMap: any = {
+      width: 10,
+      height: 10,
+      collision: new Array(100).fill(0),
+    };
+    const player = new LocalPlayer(mockMap, undefined, undefined, {
+      skipPixi: true,
+    });
+    gameEngine.player = player;
+
+    render(<App />);
+    const vibeBtn = screen.getByRole('button', { name: /toggle vibe/i });
+    expect(vibeBtn).toBeDefined();
+    expect(vibeBtn.textContent).toContain('Vibe: OFF');
+    expect(player.action).toBe('idle');
+
+    // Toggle ON
+    fireEvent.click(vibeBtn);
+    expect(vibeBtn.textContent).toContain('Vibe: ON');
+    expect(player.action).toBe('vibe');
+
+    // Toggle OFF
+    fireEvent.click(vibeBtn);
+    expect(vibeBtn.textContent).toContain('Vibe: OFF');
+    expect(player.action).toBe('idle');
+
+    (gameEngine as any).player = undefined;
+  });
+
+  it('renders the Wardrobe HUD button and toggles the Wardrobe dialog', () => {
+    render(<App />);
+
+    // Wardrobe dialog not initially shown
+    expect(screen.queryByRole('dialog', { name: /wardrobe/i })).toBeNull();
+
+    // Click Wardrobe button
+    const wardrobeBtn = screen.getByRole('button', { name: /toggle wardrobe/i });
+    fireEvent.click(wardrobeBtn);
+
+    // Wardrobe dialog opens
+    expect(screen.getByRole('dialog', { name: /wardrobe/i })).toBeDefined();
+
+    // Close via close button in dialog
+    const closeBtn = screen.getByRole('button', { name: /close wardrobe/i });
+    fireEvent.click(closeBtn);
+
+    // Dialog closes
+    expect(screen.queryByRole('dialog', { name: /wardrobe/i })).toBeNull();
+  });
 });

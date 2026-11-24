@@ -439,4 +439,39 @@ describe('LocalPlayer', () => {
     player.handleKeyDown('KeyS');
     expect(player.action).toBe('walk');
   });
+
+  it('V key toggles vibe action on and off', () => {
+    const map = createMockMap();
+    const player = new LocalPlayer(map, undefined, undefined, {
+      skipPixi: true,
+    });
+
+    expect(player.action).toBe('idle');
+
+    // Press V -> vibe
+    player.handleKeyDown('KeyV');
+    expect(player.action).toBe('vibe');
+
+    // Press V again -> idle
+    player.handleKeyDown('KeyV');
+    expect(player.action).toBe('idle');
+  });
+
+  it('LocalPlayer renders through PlayerAvatar when visual layers are provided', () => {
+    const map = createMockMap();
+    const mockLayers: any = {
+      entityLayer: { addChild: vi.fn() },
+      worldUiLayer: { addChild: vi.fn() },
+    };
+
+    const player = new LocalPlayer(map, undefined, mockLayers, {
+      skipPixi: false,
+    });
+
+    expect(player.avatar).toBeDefined();
+    expect(player.container).toBe(player.avatar);
+    expect(mockLayers.entityLayer.addChild).toHaveBeenCalledWith(player.avatar);
+
+    player.destroy();
+  });
 });
