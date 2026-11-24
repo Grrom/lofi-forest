@@ -6,10 +6,12 @@ import { audioEngine } from './audio/AudioEngine';
 import { createMockAudioContext } from './audio/mockAudioContext';
 import { gameEngine } from './engine/game';
 import { LocalPlayer } from './entities/LocalPlayer';
+import { pomodoroController } from './systems/PomodoroController';
 
 describe('apps/web HUD and Audio UI', () => {
   beforeEach(() => {
     StorageManager.reset();
+    pomodoroController.reset();
     const mockCtx = createMockAudioContext(0);
     audioEngine.resetForTest(mockCtx);
   });
@@ -284,5 +286,22 @@ describe('apps/web HUD and Audio UI', () => {
 
     // Dialog closes
     expect(screen.queryByRole('dialog', { name: /wardrobe/i })).toBeNull();
+  });
+
+  // Acceptance criterion:
+  // Test: the countdown renders 24:59 one second after start.
+  it('the countdown renders 24:59 one second after start', () => {
+    vi.useFakeTimers();
+    render(<App />);
+
+    const startBtn = screen.getByRole('button', { name: /start pomodoro/i });
+    fireEvent.click(startBtn);
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(screen.getByText('24:59')).toBeDefined();
+    vi.useRealTimers();
   });
 });

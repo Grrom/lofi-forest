@@ -7,6 +7,7 @@ import type { ParsedTiledMap } from '../engine/tiled';
 import { parseTiledMap } from '../engine/tiled';
 import { generateStarterMap } from '../engine/starterMapData';
 import { StorageManager } from '../systems/StorageManager';
+import { pomodoroController } from '../systems/PomodoroController';
 
 function createMockMap(overrides?: Partial<ParsedTiledMap>): ParsedTiledMap {
   const width = 30;
@@ -526,6 +527,39 @@ describe('LocalPlayer', () => {
     expect(player.action).not.toBe('sleep');
 
     player.destroy();
+    vi.useRealTimers();
+  });
+
+  // Acceptance criterion:
+  // Test: during focus the AfkDetector never triggers sleep.
+  it('during focus the AfkDetector never triggers sleep', () => {
+    vi.useFakeTimers();
+    pomodoroController.reset();
+    const map = createMockMap();
+    const player = new LocalPlayer(map, undefined, undefined, {
+      skipPixi: true,
+    });
+
+    pomodoroController.start();
+    expect(pomodoroController.phase).toBe('focus');
+    expect(player.afkDetector?.isSuppressed()).toBe(true);
+
+    // Advance past AFK threshold (300 000 ms)
+    vi.advanceTimersByTime(300000);
+    expect(player.afkDetector?.isSleeping).toBe(false);
+    expect(player.action).not.toBe('sleep');
+
+    // Control case: reset pomodoro out of focus
+    pomodoroController.reset();
+    expect(player.afkDetector?.isSuppressed()).toBe(false);
+
+    // Advance past AFK threshold again (300 000 ms)
+    vi.advanceTimersByTime(300000);
+    expect(player.afkDetector?.isSleeping).toBe(true);
+    expect(player.action).toBe('sleep');
+
+    player.destroy();
+    pomodoroController.reset();
     vi.useRealTimers();
   });
 
