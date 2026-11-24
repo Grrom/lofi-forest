@@ -10,6 +10,7 @@ import { defaultFastTravelSystem } from './systems/FastTravelSystem';
 import { generateStarterMap } from './engine/starterMapData';
 import { parseTiledMap } from './engine/tiled';
 import { pomodoroController } from './systems/PomodoroController';
+import { parseSpectatorParams } from '@lofi/shared';
 
 describe('apps/web HUD and Audio UI', () => {
   beforeEach(() => {
@@ -488,7 +489,11 @@ describe('apps/web HUD and Audio UI', () => {
   // Acceptance criterion:
   // Test: in spectator mode the wardrobe, mixer, fast travel, emote bar, roster, room controls and Pomodoro card are not rendered, and no local avatar exists.
   it('in spectator mode the wardrobe, mixer, fast travel, emote bar, roster, room controls and Pomodoro card are not rendered, and no local avatar exists', async () => {
-    (gameEngine as any).player = undefined;
+    await gameEngine.setupSession(
+      parseSpectatorParams(
+        '?room=public&mode=spectator&zone=forest&hideNames=1&overlay=1'
+      )
+    );
 
     render(
       <App search="?room=public&mode=spectator&zone=forest&hideNames=1&overlay=1" />

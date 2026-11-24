@@ -7,7 +7,6 @@ export interface StreamOverlayProps {
   focusMin?: number;
   breakMin?: number;
   now?: () => number;
-  remainingMsOverride?: number;
   audio?: {
     currentTrack: () => { title: string; artist: string } | null;
     onTrackChange?: (
@@ -39,7 +38,6 @@ export const StreamOverlay: React.FC<StreamOverlayProps> = ({
   focusMin = 50,
   breakMin = 10,
   now = () => Date.now(),
-  remainingMsOverride,
   audio = audioEngine,
   siteHost = getSiteHost(),
   className,
@@ -64,10 +62,7 @@ export const StreamOverlay: React.FC<StreamOverlayProps> = ({
   }, [now, audio]);
 
   const cycle = epochCycle(nowMs, focusMin, breakMin);
-  const remainingMs =
-    remainingMsOverride !== undefined
-      ? remainingMsOverride
-      : Math.max(0, cycle.endsAtMs - nowMs);
+  const remainingMs = Math.max(0, cycle.endsAtMs - nowMs);
   const countdownStr = formatTimerMs(remainingMs);
   const phaseStr = cycle.phase.toUpperCase();
 

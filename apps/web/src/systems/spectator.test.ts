@@ -51,6 +51,8 @@ describe('Spectator mode & Epoch cycle', () => {
   // Acceptance criterion:
   // Test: F3 moves the camera target to the pub camera_focus; H toggles the overlay.
   it('F3 moves the camera target to the pub camera_focus; H toggles the overlay', () => {
+    gameEngine.isSpectator = true;
+
     // 1. Initial spectator zone set to forest
     gameEngine.setSpectatorZone('forest');
     const forestFocus = gameEngine.parsedMap.cameraFoci.find((f) => f.zone === 'forest');
@@ -80,6 +82,39 @@ describe('Spectator mode & Epoch cycle', () => {
 
     gameEngine.handleKeyDown({ key: 'H', preventDefault: vi.fn() });
     expect(gameEngine.isOverlayVisible).toBe(initialOverlay);
+  });
+
+  it('with isSpectator = false, handleKeyDown does not toggle overlay, call preventDefault, or change camera target/zone', () => {
+    gameEngine.isSpectator = false;
+    const initialOverlay = gameEngine.isOverlayVisible;
+    const preventDefault = vi.fn();
+
+    // Key 'h' does not toggle overlay and does not call preventDefault
+    gameEngine.handleKeyDown({ key: 'h', preventDefault });
+    expect(gameEngine.isOverlayVisible).toBe(initialOverlay);
+    expect(preventDefault).not.toHaveBeenCalled();
+
+    gameEngine.handleKeyDown({ key: 'H', preventDefault });
+    expect(gameEngine.isOverlayVisible).toBe(initialOverlay);
+    expect(preventDefault).not.toHaveBeenCalled();
+
+    // F3 leaves camera.target and currentZone unchanged
+    const initialTarget = gameEngine.camera.target;
+    const initialZone = (gameEngine as any).currentZone;
+    gameEngine.handleKeyDown({ key: 'F3', preventDefault });
+    expect(gameEngine.camera.target).toBe(initialTarget);
+    expect((gameEngine as any).currentZone).toBe(initialZone);
+    expect(preventDefault).not.toHaveBeenCalled();
+
+    // Input focus guard: even if isSpectator = true, typing inside an input element is ignored
+    gameEngine.isSpectator = true;
+    gameEngine.handleKeyDown({ key: 'h', target: { tagName: 'INPUT' }, preventDefault });
+    expect(gameEngine.isOverlayVisible).toBe(initialOverlay);
+    expect(preventDefault).not.toHaveBeenCalled();
+
+    gameEngine.handleKeyDown({ key: 'h', target: { isContentEditable: true }, preventDefault });
+    expect(gameEngine.isOverlayVisible).toBe(initialOverlay);
+    expect(preventDefault).not.toHaveBeenCalled();
   });
 
   // Acceptance criterion:
