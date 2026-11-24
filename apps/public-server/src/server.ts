@@ -29,6 +29,7 @@ export interface ServerConfig {
   helloTimeoutMs: number;
   pingIntervalMs: number;
   pongTimeoutMs: number;
+  nameRng?: () => number;
 }
 
 export interface ServerInstance {
@@ -117,6 +118,7 @@ export function resolveConfig(options?: Partial<ServerConfig>): ServerConfig {
     helloTimeoutMs: options?.helloTimeoutMs ?? 5000,
     pingIntervalMs: options?.pingIntervalMs ?? 25000,
     pongTimeoutMs: options?.pongTimeoutMs ?? 60000,
+    nameRng: options?.nameRng ?? Math.random,
   };
 }
 
@@ -360,7 +362,7 @@ export function createServer(options?: Partial<ServerConfig>) {
           for (const p of players.values()) {
             if (p.name) existingNames.add(p.name);
           }
-          const name = generateLobbyName(existingNames);
+          const name = generateLobbyName(existingNames, config.nameRng);
           playerSession = {
             id: playerId,
             name,

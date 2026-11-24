@@ -648,7 +648,7 @@ describe('public-server integration tests', () => {
   // Acceptance criterion:
   // Server test: a hello with name "badword" results in a stored and broadcast name matching /^[A-Z][a-z]+ [A-Z][a-z]+\d?$/, never the sent name.
   it('Server test: a hello with name "badword" results in a stored and broadcast name matching /^[A-Z][a-z]+ [A-Z][a-z]+\d?$/, never the sent name', async () => {
-    const instance = await startServer();
+    const instance = await startServer(0, '127.0.0.1');
     const clients: TestClient[] = [];
     try {
       const c1 = await createTestClient(instance.port, '/ws');
@@ -703,29 +703,67 @@ describe('public-server integration tests', () => {
   // Acceptance criterion:
   // Server test: two players never share a name at the same time.
   it('Server test: two players never share a name at the same time', async () => {
-    const instance = await startServer(0, '127.0.0.1', { maxPlayers: 30, maxConnPerIp: 30 });
+    const instance = await startServer(0, '127.0.0.1', {
+      nameRng: () => 0,
+      maxConnPerIp: 10,
+    });
     const clients: TestClient[] = [];
     try {
-      const numPlayers = 15;
-      const assignedNames: string[] = [];
+      const c1 = await createTestClient(instance.port, '/ws');
+      const c2 = await createTestClient(instance.port, '/ws');
+      const c3 = await createTestClient(instance.port, '/ws');
+      clients.push(c1, c2, c3);
 
-      for (let i = 0; i < numPlayers; i++) {
-        const client = await createTestClient(instance.port, '/ws');
-        clients.push(client);
-        client.send({
-          t: 'hello',
-          name: 'Player',
-          outfit: { baseId: 'b', hatId: 'none', colorHex: '#fff' },
-        });
-        const welcome = await client.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
-        expect(welcome.name).toBeDefined();
-        expect(welcome.name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+\d?$/);
-        assignedNames.push(welcome.name!);
-      }
+      c1.send({
+        t: 'hello',
+        name: 'Player1',
+        outfit: { baseId: 'b', hatId: 'none', colorHex: '#fff' },
+      });
+      const w1 = await c1.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
 
-      // Check all assigned names are strictly unique
-      const nameSet = new Set(assignedNames);
-      expect(nameSet.size).toBe(numPlayers);
+      c2.send({
+        t: 'hello',
+        name: 'Player2',
+        outfit: { baseId: 'b', hatId: 'none', colorHex: '#fff' },
+      });
+      const w2 = await c2.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
+
+      c3.send({
+        t: 'hello',
+        name: 'Player3',
+        outfit: { baseId: 'b', hatId: 'none', colorHex: '#fff' },
+      });
+      const w3 = await c3.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
+
+      expect(w1.name).toBe('Mossy Fox');
+      expect(w2.name).toBe('Mossy Fox2');
+      expect(w3.name).toBe('Mossy Fox3');
+
+      // Then close the 'Mossy Fox2' client, wait for its close event or the next snap
+      const closePromise = new Promise<void>((resolve) => {
+        c2.ws.once('close', () => resolve());
+      });
+      c2.close();
+      await closePromise;
+      await c1.waitForMessage<ServerSnapMsg>(
+        (m: any) => m.t === 'snap' && m.left && m.left.includes(w2.id)
+      );
+
+      // Connect a fourth player
+      const c4 = await createTestClient(instance.port, '/ws');
+      clients.push(c4);
+      c4.send({
+        t: 'hello',
+        name: 'Player4',
+        outfit: { baseId: 'b', hatId: 'none', colorHex: '#fff' },
+      });
+      const w4 = await c4.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
+      expect(w4.name).toBeDefined();
+
+      // Assert its name is not one of the names still in use
+      const activeNames = [w1.name, w3.name];
+      expect(activeNames).not.toContain(w4.name);
+      expect(w4.name).toBe('Mossy Fox2');
     } finally {
       clients.forEach((c) => c.terminate());
       await instance.close();
