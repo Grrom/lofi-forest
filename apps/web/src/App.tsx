@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { StorageManager, type ZoomSetting } from './engine/storage';
 import { gameEngine } from './engine/game';
+import { AudioUnlockPill } from './components/AudioUnlockPill';
+import { MixerPanel } from './components/MixerPanel';
 import { gameEvents } from './engine/events';
 import { WardrobePanel } from './ui/WardrobePanel';
 
@@ -66,9 +68,26 @@ export default function App() {
   };
 
   return (
-    <div className="hud">
-      <h1>lofi-forest</h1>
-      <div className="hud-controls" style={{ marginTop: '8px' }}>
+    <div
+      className="hud"
+      style={{
+        position: 'absolute',
+        top: '12px',
+        left: '12px',
+        zIndex: 100,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <h1 style={{ margin: 0, fontSize: '18px', color: '#e0eee0', fontFamily: 'monospace' }}>
+          lofi-forest
+        </h1>
+        <AudioUnlockPill />
+      </div>
+
+      <div className="hud-controls" style={{ display: 'flex', gap: '8px' }}>
         <button
           type="button"
           className="hud-zoom-btn"
@@ -79,6 +98,10 @@ export default function App() {
             fontFamily: 'monospace',
             fontSize: '12px',
             cursor: 'pointer',
+            backgroundColor: 'rgba(20, 25, 20, 0.85)',
+            color: '#e0eee0',
+            border: '1px solid #334433',
+            borderRadius: '4px',
           }}
         >
           Zoom: {zoomSetting}
@@ -135,6 +158,8 @@ export default function App() {
           Wardrobe
         </button>
       </div>
+
+      <MixerPanel />
       {isWardrobeOpen && <WardrobePanel onClose={() => setIsWardrobeOpen(false)} />}
     </div>
   );
