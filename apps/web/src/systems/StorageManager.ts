@@ -294,7 +294,7 @@ export class StorageManager {
         }
         if (po.focusMin !== undefined) {
           if (typeof po.focusMin === 'number' && Number.isFinite(po.focusMin)) {
-            pomo.focusMin = Math.max(1, Math.min(120, Math.round(po.focusMin)));
+            pomo.focusMin = Math.max(1, Math.min(180, Math.round(po.focusMin)));
           } else {
             hasWrongType = true;
           }
@@ -428,7 +428,7 @@ export class StorageManager {
           : current.pomo.preset,
       focusMin:
         pomoPatch?.focusMin !== undefined
-          ? clampMin(pomoPatch.focusMin, 1, 120, current.pomo.focusMin)
+          ? clampMin(pomoPatch.focusMin, 1, 180, current.pomo.focusMin)
           : current.pomo.focusMin,
       breakMin:
         pomoPatch?.breakMin !== undefined

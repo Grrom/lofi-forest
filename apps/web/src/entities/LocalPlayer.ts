@@ -1,5 +1,5 @@
 import { Container, Graphics, Rectangle, Sprite, Text } from 'pixi.js';
-import type { Facing, Outfit, PlayerAction, ZoneId } from '@lofi/shared';
+import type { Facing, Outfit, PlayerAction, PomoBadge, ZoneId } from '@lofi/shared';
 import { PLAYER_SPEED_PX_S, TILE_SIZE } from '@lofi/shared';
 import type { WorldLayers } from '../engine/layers';
 import type { Camera } from '../engine/camera';
@@ -20,6 +20,7 @@ import { findPath } from '../systems/pathfinding';
 import { PlayerAvatar } from './PlayerAvatar';
 import { AfkDetector } from '../systems/AfkDetector';
 import { StorageManager } from '../systems/StorageManager';
+import { pomodoroController } from '../systems/PomodoroController';
 
 export interface LocalPlayerOptions {
   initialX?: number;
@@ -70,6 +71,7 @@ export class LocalPlayer {
   private celebrateUntilMs = 0;
   private previousActionBeforeCelebrate: PlayerAction = 'idle';
   private unsubStorage?: () => void;
+  private unsubPomo?: () => void;
 
   private onKeyDownBound?: (e: KeyboardEvent) => void;
   private onKeyUpBound?: (e: KeyboardEvent) => void;
@@ -110,7 +112,14 @@ export class LocalPlayer {
     }
 
     // Initialize AfkDetector
-    this.afkDetector = new AfkDetector(this, () => this.isAutoStroll);
+    this.afkDetector = new AfkDetector(
+      this,
+      () => this.isAutoStroll || pomodoroController.phase === 'focus'
+    );
+
+    this.unsubPomo = gameEvents.on('pomoPhaseChanged', ({ phase }) => {
+      this.setStatus(phase);
+    });
 
     // Setup Pixi containers if not skipped
     if (!options?.skipPixi && layers) {
@@ -196,6 +205,10 @@ export class LocalPlayer {
     });
 
     return container;
+  }
+
+  public get pomo(): PomoBadge {
+    return pomodoroController.localBadge();
   }
 
   public getLocalState(): {
@@ -791,6 +804,10 @@ export class LocalPlayer {
     if (this.unsubStorage) {
       this.unsubStorage();
       this.unsubStorage = undefined;
+    }
+    if (this.unsubPomo) {
+      this.unsubPomo();
+      this.unsubPomo = undefined;
     }
     this.afkDetector?.destroy();
     this.avatar?.destroy();

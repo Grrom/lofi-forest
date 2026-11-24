@@ -12,7 +12,8 @@ import {
 import { Atmosphere } from './atmosphere';
 import { gameEvents } from './events';
 import { LocalPlayer } from '../entities/LocalPlayer';
-import type { AssetManifest, ZoneId } from '@lofi/shared';
+import type { AssetManifest, PomoBadge, ZoneId } from '@lofi/shared';
+import { pomodoroController } from '../systems/PomodoroController';
 
 export class GameEngine {
   public app!: Application;
@@ -30,6 +31,7 @@ export class GameEngine {
   private lastTickMs = Date.now();
   private updateIntervalId: any = null;
   private unsubZoneChanged?: () => void;
+  private unsubPomo?: () => void;
 
   public async init(canvasContainer?: HTMLElement): Promise<Application> {
     // 1. Ensure nearest neighbor scaleMode
@@ -128,6 +130,31 @@ export class GameEngine {
     this.unsubZoneChanged = gameEvents.on('zoneChanged', ({ zone }) => {
       this.currentZone = zone;
       this.atmosphere.setZone(zone);
+    });
+
+    // 8b. Initial Pomodoro sync and event subscription
+    const initialBadge = pomodoroController.localBadge();
+    this.player.setStatus(initialBadge);
+    if (initialBadge === 'focus') {
+      this.atmosphere.setVignette(true);
+    }
+
+    let prevBadge: PomoBadge = initialBadge;
+    this.unsubPomo = gameEvents.on('pomoPhaseChanged', ({ phase }) => {
+      this.player?.setStatus(phase);
+      if (phase === 'focus') {
+        this.atmosphere?.setVignette(true);
+      } else {
+        this.atmosphere?.setVignette(false);
+      }
+
+      // on focus → break: celebrate(), pulseGlow(), vignette off
+      if (prevBadge === 'focus' && phase === 'break') {
+        this.player?.celebrate();
+        this.atmosphere?.pulseGlow();
+      }
+
+      prevBadge = phase;
     });
 
     // Tap / Click-to-walk on canvas
@@ -253,6 +280,10 @@ export class GameEngine {
     if (this.unsubZoneChanged) {
       this.unsubZoneChanged();
       this.unsubZoneChanged = undefined;
+    }
+    if (this.unsubPomo) {
+      this.unsubPomo();
+      this.unsubPomo = undefined;
     }
     if (this.updateIntervalId) {
       clearInterval(this.updateIntervalId);
