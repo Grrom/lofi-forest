@@ -5,7 +5,7 @@ import {
   type EmoteId,
   type PlayerNetState,
 } from '@lofi/shared';
-import { joinRoom as defaultJoinRoom, type Room } from 'trystero';
+import { joinRoom as defaultJoinRoom } from 'trystero';
 import type { TransportAdapter, TransportMode, TransportStatus } from './TransportAdapter';
 
 export type TrysteroJoinRoomFn = (config: any, roomCode: string) => any;
@@ -361,8 +361,4 @@ export class TrysteroTransport implements TransportAdapter {
     this.peerMessageTimestamps.set(peerId, timestamps);
     return true;
   }
-}
-
-export function registerTrysteroTransport(): void {
-  // Can be called to register mode 'p2p'
 }

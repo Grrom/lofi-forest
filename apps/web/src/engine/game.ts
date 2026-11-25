@@ -65,6 +65,7 @@ export class GameEngine {
   public player!: LocalPlayer;
   public fastTravelSystem!: FastTravelSystem;
   public transport?: TransportAdapter;
+  private pendingTransport?: TransportAdapter;
   public netSync?: NetSync;
   public isDebug = false;
 
@@ -184,7 +185,7 @@ export class GameEngine {
       this.netSync.destroy();
       this.netSync = undefined;
     }
-    if (this.transport) {
+    if (this.transport && this.transport !== this.pendingTransport) {
       this.transport.disconnect();
       this.transport = undefined;
     }
@@ -194,6 +195,10 @@ export class GameEngine {
     }
 
     if (this.isSpectator) {
+      if (this.pendingTransport) {
+        this.pendingTransport.disconnect();
+        this.pendingTransport = undefined;
+      }
       this.attachSpectatorHotkeys();
 
       // Audio: on load, call AudioEngine.unlockNow() (OBS allows autoplay)
@@ -259,14 +264,19 @@ export class GameEngine {
       });
 
       // Transport & NetSync setup
-      const isLockedOnLoad =
-        typeof window !== 'undefined' &&
-        new URLSearchParams(window.location.search).get('locked') === '1';
-
-      if (isLockedOnLoad) {
-        this.transport = new LocalTransport();
+      if (this.pendingTransport) {
+        this.transport = this.pendingTransport;
+        this.pendingTransport = undefined;
       } else {
-        this.transport = createTransport();
+        const isLockedOnLoad =
+          typeof window !== 'undefined' &&
+          new URLSearchParams(window.location.search).get('locked') === '1';
+
+        if (isLockedOnLoad) {
+          this.transport = new LocalTransport();
+        } else {
+          this.transport = createTransport();
+        }
       }
       await this.transport.connect();
       this.netSync = new NetSync(this.transport, this.player, {
@@ -501,6 +511,14 @@ export class GameEngine {
   }
 
   public async setTransport(transport: TransportAdapter): Promise<void> {
+    if (!this.player) {
+      if (this.pendingTransport && this.pendingTransport !== transport) {
+        this.pendingTransport.disconnect();
+      }
+      this.pendingTransport = transport;
+      await transport.connect();
+      return;
+    }
     if (this.netSync) {
       this.netSync.destroy();
       this.netSync = undefined;
@@ -561,6 +579,10 @@ export class GameEngine {
     if (this.updateIntervalId) {
       clearInterval(this.updateIntervalId);
       this.updateIntervalId = null;
+    }
+    if (this.pendingTransport) {
+      this.pendingTransport.disconnect();
+      this.pendingTransport = undefined;
     }
     this.netSync?.destroy();
     this.transport?.disconnect();

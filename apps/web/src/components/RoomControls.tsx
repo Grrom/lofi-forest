@@ -21,6 +21,7 @@ export function RoomControls({ onTransportChange }: RoomControlsProps) {
   const [joinPassword, setJoinPassword] = useState('');
   const [copied, setCopied] = useState(false);
   const [roomWarning, setRoomWarning] = useState<string | null>(null);
+  const [isRoomFull, setIsRoomFull] = useState(false);
 
   const lockedTimeoutRef = useRef<any>(null);
   const hasPeersRef = useRef(false);
@@ -86,6 +87,23 @@ export function RoomControls({ onTransportChange }: RoomControlsProps) {
     };
   }, [currentRoom, isLockedRoom]);
 
+  // Monitor connection status changes for room_full
+  useEffect(() => {
+    const unsub = gameEvents.on('connectionStatusChanged', ({ status }) => {
+      if (status === 'room_full') {
+        if (currentRoom) {
+          setIsRoomFull(true);
+        }
+      } else if (status === 'connected') {
+        setIsRoomFull(false);
+      }
+    });
+
+    return () => {
+      unsub();
+    };
+  }, [currentRoom]);
+
   const handleCreateRoom = async () => {
     const code = generateRoomCode();
     const pwd = createPassword.trim();
@@ -107,6 +125,7 @@ export function RoomControls({ onTransportChange }: RoomControlsProps) {
 
     setCurrentRoom(code);
     setIsLockedRoom(Boolean(pwd));
+    setIsRoomFull(false);
     setShowCreateDialog(false);
     setCreatePassword('');
   };
@@ -127,9 +146,19 @@ export function RoomControls({ onTransportChange }: RoomControlsProps) {
 
     setCurrentRoom(code);
     setIsLockedRoom(true);
+    setIsRoomFull(false);
     setShowPasswordPrompt(false);
     setJoinPassword('');
     setPendingJoinRoom(null);
+  };
+
+  const handleCancelJoinLockedRoom = () => {
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    setShowPasswordPrompt(false);
+    setPendingJoinRoom(null);
+    setJoinPassword('');
   };
 
   const handleLeaveRoom = async () => {
@@ -148,6 +177,7 @@ export function RoomControls({ onTransportChange }: RoomControlsProps) {
 
     setCurrentRoom(null);
     setIsLockedRoom(false);
+    setIsRoomFull(false);
     setRoomWarning(null);
     if (lockedTimeoutRef.current) {
       clearTimeout(lockedTimeoutRef.current);
@@ -200,24 +230,26 @@ export function RoomControls({ onTransportChange }: RoomControlsProps) {
             >
               Room: {currentRoom} {isLockedRoom && '🔒'}
             </span>
-            <button
-              type="button"
-              className="hud-copy-link-btn"
-              onClick={handleCopyLink}
-              aria-label="Copy link"
-              style={{
-                padding: '4px 8px',
-                fontFamily: 'monospace',
-                fontSize: '11px',
-                cursor: 'pointer',
-                backgroundColor: copied ? '#4a7c59' : '#2b3f2f',
-                color: '#fffaeb',
-                border: '1px solid #4a7c59',
-                borderRadius: '4px',
-              }}
-            >
-              {copied ? 'Copied!' : 'Copy link'}
-            </button>
+            {!isRoomFull && (
+              <button
+                type="button"
+                className="hud-copy-link-btn"
+                onClick={handleCopyLink}
+                aria-label="Copy link"
+                style={{
+                  padding: '4px 8px',
+                  fontFamily: 'monospace',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  backgroundColor: copied ? '#4a7c59' : '#2b3f2f',
+                  color: '#fffaeb',
+                  border: '1px solid #4a7c59',
+                  borderRadius: '4px',
+                }}
+              >
+                {copied ? 'Copied!' : 'Copy link'}
+              </button>
+            )}
             <button
               type="button"
               className="hud-leave-room-btn"
@@ -239,6 +271,31 @@ export function RoomControls({ onTransportChange }: RoomControlsProps) {
           </div>
         )}
       </div>
+
+      {/* Alert banner when room is full */}
+      {isRoomFull && currentRoom && (
+        <div
+          role="alert"
+          className="hud-room-full-alert"
+          style={{
+            position: 'fixed',
+            bottom: '48px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#3b1414',
+            color: '#fecaca',
+            border: '1px solid #dc2626',
+            borderRadius: '4px',
+            padding: '8px 16px',
+            fontFamily: 'monospace',
+            fontSize: '12px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            zIndex: 9999,
+          }}
+        >
+          This room is full (max 10)
+        </div>
+      )}
 
       {/* Warning banner for locked room without peers */}
       {roomWarning && (
@@ -419,6 +476,21 @@ export function RoomControls({ onTransportChange }: RoomControlsProps) {
             <h2 style={{ margin: 0, fontSize: '14px', textTransform: 'uppercase' }}>
               Locked Room
             </h2>
+            <button
+              type="button"
+              onClick={handleCancelJoinLockedRoom}
+              aria-label="Close dialog"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#fffaeb',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontFamily: 'monospace',
+              }}
+            >
+              ✕
+            </button>
           </div>
 
           <p style={{ fontSize: '12px', marginBottom: '10px' }}>
@@ -460,6 +532,23 @@ export function RoomControls({ onTransportChange }: RoomControlsProps) {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={handleCancelJoinLockedRoom}
+              aria-label="Cancel"
+              style={{
+                padding: '6px 12px',
+                fontFamily: 'monospace',
+                fontSize: '12px',
+                cursor: 'pointer',
+                backgroundColor: 'transparent',
+                color: '#e0eee0',
+                border: '1px solid #334433',
+                borderRadius: '3px',
+              }}
+            >
+              Cancel
+            </button>
             <button
               type="button"
               onClick={handleJoinLockedRoom}

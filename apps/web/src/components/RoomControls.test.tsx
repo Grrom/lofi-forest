@@ -3,6 +3,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import React from 'react';
 import { RoomControls } from './RoomControls';
 import { joinRoom } from 'trystero';
+import { gameEvents } from '../engine/events';
 
 vi.mock('trystero', () => ({
   joinRoom: vi.fn(),
@@ -168,6 +169,69 @@ describe('RoomControls and URL handling', () => {
     expect(window.location.search).toBe('');
 
     // Returns to solo: "Create Room" button is back
+    expect(screen.getByRole('button', { name: /create room/i })).toBeDefined();
+  });
+
+  it('canceling password prompt clears URL, dismisses dialog, never calls joinRoom, and shows Create Room', async () => {
+    window.history.replaceState(null, '', '?room=pine-482&locked=1');
+    render(<RoomControls />);
+
+    // Password prompt dialog is shown
+    expect(screen.getByRole('dialog', { name: /password required/i })).toBeDefined();
+
+    // Click Cancel
+    const cancelBtn = screen.getByRole('button', { name: /cancel/i });
+    fireEvent.click(cancelBtn);
+
+    // Dialog is gone
+    expect(screen.queryByRole('dialog', { name: /password required/i })).toBeNull();
+
+    // URL is reset to base path
+    expect(window.location.search).toBe('');
+
+    // joinRoom was never called
+    expect(joinRoomSpy).not.toHaveBeenCalled();
+
+    // 'Create Room' button is shown
+    expect(screen.getByRole('button', { name: /create room/i })).toBeDefined();
+  });
+
+  it('shows room_full alert and hides Copy link when connectionStatusChanged emits room_full', async () => {
+    window.history.replaceState(null, '', '?room=pine-482');
+    render(<RoomControls />);
+
+    // In room: Copy link is visible
+    expect(screen.getByRole('button', { name: /copy link/i })).toBeDefined();
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    // Emit connectionStatusChanged with status: 'room_full'
+    act(() => {
+      gameEvents.emit('connectionStatusChanged', { status: 'room_full' });
+    });
+
+    // Alert appears with role="alert"
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toBe('This room is full (max 10)');
+
+    // Copy link is hidden
+    expect(screen.queryByRole('button', { name: /copy link/i })).toBeNull();
+
+    // Leave room still works
+    const leaveBtn = screen.getByRole('button', { name: /leave room/i });
+    expect(leaveBtn).toBeDefined();
+
+    // Clear alert when status returns to connected
+    act(() => {
+      gameEvents.emit('connectionStatusChanged', { status: 'connected' });
+    });
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('button', { name: /copy link/i })).toBeDefined();
+
+    // Leaving room resets room state
+    await act(async () => {
+      fireEvent.click(leaveBtn);
+    });
     expect(screen.getByRole('button', { name: /create room/i })).toBeDefined();
   });
 });
