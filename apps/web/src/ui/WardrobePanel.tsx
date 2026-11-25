@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { StorageManager, usePrefs } from '../systems/StorageManager';
 import { assetLoader } from '../engine/assets/AssetLoader';
-import { HAT_IDS, sanitizeName, type HatId } from '@lofi/shared';
+import { HAT_IDS, PUBLIC_ROOM_CODE, sanitizeName, type HatId } from '@lofi/shared';
+import { parseRoomParam } from '../net/createTransport';
+import { gameEngine } from '../engine/game';
 
 export const PALETTE_PRESETS = [
   '#ffffff', // Classic White
@@ -16,11 +18,21 @@ export const PALETTE_PRESETS = [
 
 export interface WardrobePanelProps {
   onClose?: () => void;
+  isLobby?: boolean;
+  serverName?: string | null;
 }
 
-export function WardrobePanel({ onClose }: WardrobePanelProps) {
+export function WardrobePanel({
+  onClose,
+  isLobby: propIsLobby,
+}: WardrobePanelProps) {
   const prefs = usePrefs();
   const [name, setName] = useState(prefs.profile.name);
+
+  const isLobby =
+    propIsLobby ??
+    (parseRoomParam() === PUBLIC_ROOM_CODE ||
+      gameEngine?.transport?.mode === 'public');
 
   // Sync state if prefs change externally
   useEffect(() => {
@@ -178,6 +190,19 @@ export function WardrobePanel({ onClose }: WardrobePanelProps) {
             borderRadius: '3px',
           }}
         />
+        {isLobby && (
+          <div
+            className="wardrobe-name-hint"
+            style={{
+              fontSize: '11px',
+              color: '#d4a373',
+              marginTop: '4px',
+              lineHeight: '1.3',
+            }}
+          >
+            Custom names appear in your own rooms only
+          </div>
+        )}
       </div>
 
       {/* Palette Presets */}

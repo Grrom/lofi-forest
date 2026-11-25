@@ -5,6 +5,7 @@ import type { PlayerNetState, PomoBadge } from '@lofi/shared';
 import { gameEvents } from '../engine/events';
 import { pomodoroController } from '../systems/PomodoroController';
 import { RemotePlayer } from '../entities/RemotePlayer';
+import { StorageManager } from '../systems/StorageManager';
 
 function createMockTransport(): TransportAdapter & {
   playersCb: ((p: Map<string, PlayerNetState>) => void) | null;
@@ -307,5 +308,103 @@ describe('NetSync', () => {
     expect(showEmoteSpy).toHaveBeenCalledWith('sparkle');
 
     netSync.destroy();
+  });
+
+  // Acceptance criterion:
+  // Test: with hideNames=1, remote avatars get setName(null).
+  it('with hideNames=1, remote avatars get setName(null)', () => {
+    const netSync = new NetSync(mockTransport, {
+      autoStart: false,
+      hideNames: true,
+    });
+
+    const p1: PlayerNetState = {
+      id: 'peer-names-test',
+      name: 'HiddenWanderer',
+      x: 100,
+      y: 100,
+      zone: 'forest',
+      facing: 'down',
+      action: 'idle',
+      outfit: { baseId: 'char_base', hatId: 'none', colorHex: '#4a7c59' },
+      pomo: 'none',
+    };
+
+    mockTransport.playersCb!(new Map([['peer-names-test', p1]]));
+    const rp = netSync.remotePlayers.get('peer-names-test')!;
+    expect(rp).toBeDefined();
+
+    // Verify avatar name is null and nameplate is not visible
+    expect(rp.getName()).toBeNull();
+    expect(rp.nameplate.visible).toBe(false);
+
+    // Spy on setName
+    const setNameSpy = vi.spyOn(rp, 'setName');
+
+    // Update state with a new player name
+    rp.updateState({
+      ...p1,
+      name: 'NewNameAttempt',
+      x: 105,
+    });
+
+    expect(setNameSpy).toHaveBeenCalledWith(null);
+    expect(rp.getName()).toBeNull();
+    expect(rp.nameplate.visible).toBe(false);
+
+    netSync.destroy();
+  });
+
+  it('sends assignedName when set, or falls back to avatar/storage custom name when null (P2P)', () => {
+    StorageManager.reset();
+    StorageManager.update({
+      profile: {
+        name: 'CustomPlayer',
+        outfit: { baseId: 'char_base', hatId: 'none', colorHex: '#ffffff' },
+      },
+    });
+
+    const mockPlayer = {
+      getLocalState: () => ({
+        x: 0,
+        y: 0,
+        zone: 'forest' as const,
+        facing: 'down' as const,
+        action: 'idle' as const,
+      }),
+      assignedName: 'Mossy Fox' as string | null,
+      avatar: {
+        playerName: 'AvatarCustom',
+        outfit: { baseId: 'char_base', hatId: 'none' as const, colorHex: '#ffffff' },
+      },
+    } as any;
+
+    const netSync = new NetSync(mockTransport, {
+      localPlayer: mockPlayer,
+      autoStart: false,
+    });
+
+    // 1. When localPlayer.assignedName is set, outgoing state uses it
+    netSync.tick();
+    expect(mockTransport.sendLocalState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: 'Mossy Fox' })
+    );
+
+    // 2. When localPlayer.assignedName is null (the P2P case), uses avatar custom name
+    mockPlayer.assignedName = null;
+    netSync.tick();
+    expect(mockTransport.sendLocalState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: 'AvatarCustom' })
+    );
+
+    // 3. When avatar is not present either, falls back to StorageManager profile.name
+    mockPlayer.avatar = undefined;
+    netSync.tick();
+    expect(mockTransport.sendLocalState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ name: 'CustomPlayer' })
+    );
+
+    netSync.destroy();
+    StorageManager.reset();
   });
 });

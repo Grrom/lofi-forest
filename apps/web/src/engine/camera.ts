@@ -37,6 +37,7 @@ export class Camera {
   public zoomSetting: ZoomSetting = 'auto';
   public viewportW = 0;
   public viewportH = 0;
+  public target: { x: number; y: number; [key: string]: any } | null = null;
 
   constructor() {
     this.zoomSetting = StorageManager.get().zoom;
@@ -73,11 +74,19 @@ export class Camera {
   }
 
   public lookAt(targetX: number, targetY: number): void {
+    if (!this.target || this.target.x !== targetX || this.target.y !== targetY) {
+      this.target = { x: targetX, y: targetY };
+    }
     const viewW = this.viewportW / this.zoom;
     const viewH = this.viewportH / this.zoom;
     this.x = targetX - viewW / 2;
     this.y = targetY - viewH / 2;
     this.clamp();
+  }
+
+  public setTarget(target: { x: number; y: number; [key: string]: any }): void {
+    this.target = target;
+    this.lookAt(target.x, target.y);
   }
 
   public clamp(): void {

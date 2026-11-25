@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { parseSpectatorParams } from '@lofi/shared';
+import { StreamOverlay } from './components/StreamOverlay';
 import {
   usePrefs,
   StorageManager,
@@ -19,8 +21,24 @@ import { EmoteBar } from './components/EmoteBar';
 import { PomoCard } from './components/PomoCard';
 import { RosterPanel } from './components/RosterPanel';
 import { RoomControls } from './components/RoomControls';
+import { createTransport, parseRoomParam } from './net/createTransport';
+import type { TransportStatus } from './net/TransportAdapter';
+import { PUBLIC_ROOM_CODE } from '@lofi/shared';
 
-export default function App() {
+export default function App({ search }: { search?: string } = {}) {
+  const spectatorParams = useMemo(() => {
+    const s =
+      search !== undefined
+        ? search
+        : typeof window !== 'undefined'
+          ? window.location?.search
+          : '';
+    return parseSpectatorParams(s);
+  }, [search]);
+
+  const [isOverlayVisible, setIsOverlayVisible] = useState(
+    spectatorParams.overlay
+  );
   const [isAutoStroll, setIsAutoStroll] = useState(false);
   const prefs = usePrefs();
   const [toast, setToast] = useState<string | null>(() =>
@@ -28,6 +46,16 @@ export default function App() {
   );
   const [isVibing, setIsVibing] = useState(false);
   const [isWardrobeOpen, setIsWardrobeOpen] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<TransportStatus>('connected');
+  const [assignedName, setAssignedName] = useState<string | null>(
+    () => (gameEngine?.transport as any)?.assignedName ?? null
+  );
+  const [isPublic, setIsPublic] = useState<boolean>(() => {
+    return (
+      parseRoomParam() === PUBLIC_ROOM_CODE ||
+      gameEngine?.transport?.mode === 'public'
+    );
+  });
 
   useEffect(() => {
     // Sync Auto-Stroll and Vibe states on manual input
@@ -54,13 +82,50 @@ export default function App() {
       }, durationMs);
     });
 
+    const unsubStatus = gameEvents.on('connectionStatusChanged', ({ status }) => {
+      setConnectionStatus(status);
+    });
+
+    const unsubToggleOverlay = gameEvents.on('toggleOverlay', () => {
+      setIsOverlayVisible((prev) => !prev);
+    });
+
+    const unsubAssigned = gameEvents.on('assignedNameChanged', ({ name }) => {
+      setAssignedName(name);
+      setIsPublic(true);
+    });
+
     return () => {
       unsubInput();
       unsubToast();
       unsubGameToast();
+      unsubStatus();
+      unsubToggleOverlay();
+      unsubAssigned();
       if (toastTimer) clearTimeout(toastTimer);
     };
   }, []);
+
+  const handleJoinPublicLobby = async () => {
+    if (typeof window !== 'undefined' && window.location) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', 'public');
+      window.history.pushState({}, '', url.toString());
+    }
+    if (gameEngine?.connectPublicLobby) {
+      await gameEngine.connectPublicLobby();
+    } else {
+      const transport = createTransport('?room=public');
+      await transport.connect();
+    }
+  };
+
+  const handleTryAgain = async () => {
+    if (gameEngine?.transport) {
+      await gameEngine.transport.connect();
+    }
+    gameEvents.emit('retryConnection', {});
+  };
 
   const handleCycleZoom = () => {
     if (gameEngine?.camera) {
@@ -108,6 +173,15 @@ export default function App() {
       setIsVibing((prev) => !prev);
     }
   };
+  if (spectatorParams.spectator) {
+    return isOverlayVisible ? (
+      <StreamOverlay
+        focusMin={spectatorParams.focusMin}
+        breakMin={spectatorParams.breakMin}
+      />
+    ) : null;
+  }
+
   return (
     <>
     <div
@@ -152,6 +226,45 @@ export default function App() {
           lofi-forest
         </h1>
         <StatusPill />
+        {isPublic && assignedName && (
+          <div
+            className="hud-player-name"
+            aria-label={`Player Name: ${assignedName}`}
+            style={{
+              padding: '3px 8px',
+              backgroundColor: '#1b2a1e',
+              border: '1px solid #4a7c59',
+              borderRadius: '12px',
+              fontFamily: 'monospace',
+              fontSize: '11px',
+              color: '#fffaeb',
+              fontWeight: 'bold',
+            }}
+          >
+            {assignedName}
+          </div>
+        )}
+        {connectionStatus === 'room_full' && (
+          <button
+            type="button"
+            className="hud-try-again-btn"
+            onClick={handleTryAgain}
+            aria-label="Try again"
+            style={{
+              padding: '3px 8px',
+              fontFamily: 'monospace',
+              fontSize: '11px',
+              cursor: 'pointer',
+              backgroundColor: '#782d2d',
+              color: '#ffffff',
+              border: '1px solid #ef4444',
+              borderRadius: '4px',
+              fontWeight: 'bold',
+            }}
+          >
+            Try again
+          </button>
+        )}
         <AudioUnlockPill />
       </div>
 
@@ -173,6 +286,25 @@ export default function App() {
           }}
         >
           Zoom: {prefs.zoom}
+        </button>
+        <button
+          type="button"
+          className="hud-public-btn"
+          onClick={handleJoinPublicLobby}
+          aria-label="Join Public Lobby"
+          style={{
+            marginLeft: '8px',
+            padding: '4px 8px',
+            fontFamily: 'monospace',
+            fontSize: '12px',
+            cursor: 'pointer',
+            backgroundColor: '#2b3f2f',
+            color: '#fffaeb',
+            border: '1px solid #4a7c59',
+            borderRadius: '4px',
+          }}
+        >
+          Join Public Lobby
         </button>
         <button
           type="button"
@@ -297,7 +429,13 @@ export default function App() {
           })}
         </div>
       </div>
-      {isWardrobeOpen && <WardrobePanel onClose={() => setIsWardrobeOpen(false)} />}
+      {isWardrobeOpen && (
+        <WardrobePanel
+          isLobby={isPublic}
+          serverName={assignedName}
+          onClose={() => setIsWardrobeOpen(false)}
+        />
+      )}
     </div>
     <EmoteBar />
     </>

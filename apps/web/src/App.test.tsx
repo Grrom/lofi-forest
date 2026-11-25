@@ -10,6 +10,7 @@ import { defaultFastTravelSystem } from './systems/FastTravelSystem';
 import { generateStarterMap } from './engine/starterMapData';
 import { parseTiledMap } from './engine/tiled';
 import { pomodoroController } from './systems/PomodoroController';
+import { parseSpectatorParams } from '@lofi/shared';
 
 describe('apps/web HUD and Audio UI', () => {
   beforeEach(() => {
@@ -426,5 +427,196 @@ describe('apps/web HUD and Audio UI', () => {
     // Assert fresh StorageManager instance reads zoom === 3
     const fresh = new StorageManager();
     expect(fresh.get().zoom).toBe(3);
+  });
+
+  // Acceptance criterion:
+  // HUD: a "Join Public Lobby" button sets ?room=public and connects.
+  it('HUD: a "Join Public Lobby" button sets ?room=public and connects', async () => {
+    const connectSpy = vi.fn().mockResolvedValue(undefined);
+    (gameEngine as any).connectPublicLobby = connectSpy;
+
+    render(<App />);
+    const joinBtn = screen.getByRole('button', { name: /join public lobby/i });
+    expect(joinBtn).toBeDefined();
+
+    await act(async () => {
+      fireEvent.click(joinBtn);
+    });
+
+    expect(window.location.search).toContain('room=public');
+    expect(connectSpy).toHaveBeenCalled();
+    (gameEngine as any).connectPublicLobby = undefined;
+  });
+
+  // Acceptance criterion:
+  // close 4001 or {t:'full'}: status room_full, no auto-retry, HUD offers "Try again"
+  it('HUD offers "Try again" when room_full and calls connect on retry', async () => {
+    const connectSpy = vi.fn().mockResolvedValue(undefined);
+    (gameEngine as any).transport = {
+      connect: connectSpy,
+    };
+
+    render(<App />);
+
+    // Initially room_full is false -> no "Try again" button
+    expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
+
+    // Emit connectionStatusChanged { status: 'room_full' }
+    act(() => {
+      (gameEngine as any).gameEvents?.emit?.('connectionStatusChanged', { status: 'room_full' });
+      // or import gameEvents directly
+    });
+
+    // Alternatively, use imported gameEvents
+    const { gameEvents } = await import('./engine/events');
+    act(() => {
+      gameEvents.emit('connectionStatusChanged', { status: 'room_full' });
+    });
+
+    // "Try again" button should now be visible
+    const retryBtn = screen.getByRole('button', { name: /try again/i });
+    expect(retryBtn).toBeDefined();
+
+    // Click "Try again"
+    await act(async () => {
+      fireEvent.click(retryBtn);
+    });
+
+    expect(connectSpy).toHaveBeenCalled();
+    (gameEngine as any).transport = undefined;
+  });
+
+  // Acceptance criterion:
+  // Test: in spectator mode the wardrobe, mixer, fast travel, emote bar, roster, room controls and Pomodoro card are not rendered, and no local avatar exists.
+  it('in spectator mode the wardrobe, mixer, fast travel, emote bar, roster, room controls and Pomodoro card are not rendered, and no local avatar exists', async () => {
+    await gameEngine.setupSession(
+      parseSpectatorParams(
+        '?room=public&mode=spectator&zone=forest&hideNames=1&overlay=1'
+      )
+    );
+
+    render(
+      <App search="?room=public&mode=spectator&zone=forest&hideNames=1&overlay=1" />
+    );
+
+    // 1. Wardrobe is not rendered
+    expect(
+      screen.queryByRole('button', { name: /toggle wardrobe/i })
+    ).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /wardrobe/i })).toBeNull();
+
+    // 2. Mixer is not rendered
+    expect(screen.queryByRole('heading', { name: /mixer/i })).toBeNull();
+    expect(screen.queryByLabelText(/master volume/i)).toBeNull();
+
+    // 3. Fast travel is not rendered
+    expect(screen.queryByText('Fast Travel')).toBeNull();
+
+    // 4. Emote bar is not rendered
+    expect(screen.queryByRole('toolbar', { name: /emote/i })).toBeNull();
+
+    // 5. Roster is not rendered
+    expect(screen.queryByText(/players \(\d+\)/i)).toBeNull();
+
+    // 6. Room controls are not rendered
+    expect(
+      screen.queryByRole('button', { name: /join public lobby/i })
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /toggle auto-stroll/i })
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /toggle vibe/i })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /toggle camera zoom/i })
+    ).toBeNull();
+
+    // 7. Personal Pomodoro card is not rendered
+    expect(
+      screen.queryByRole('button', { name: /start pomodoro/i })
+    ).toBeNull();
+    expect(screen.queryByText('Pomodoro')).toBeNull();
+
+    // 8. Sound pill is not rendered
+    expect(screen.queryByText('Click to enable sound')).toBeNull();
+
+    // 9. No local avatar exists
+    expect(gameEngine.player).toBeUndefined();
+
+    // 10. Overlay is rendered (since overlay=1)
+    expect(
+      screen.getByRole('complementary', { name: /stream overlay/i })
+    ).toBeDefined();
+
+    // 11. H toggles the overlay
+    const { gameEvents } = await import('./engine/events');
+    act(() => {
+      gameEvents.emit('toggleOverlay', {});
+    });
+    expect(
+      screen.queryByRole('complementary', { name: /stream overlay/i })
+    ).toBeNull();
+
+    act(() => {
+      gameEvents.emit('toggleOverlay', {});
+    });
+    expect(
+      screen.getByRole('complementary', { name: /stream overlay/i })
+    ).toBeDefined();
+  });
+
+  // Client test: in public mode the HUD shows the server-assigned name and the wardrobe hint, and StorageManager profile.name is unchanged.
+  it('Client test: in public mode the HUD shows the server-assigned name and the wardrobe hint, and StorageManager profile.name is unchanged', async () => {
+    StorageManager.reset();
+    StorageManager.update({
+      profile: {
+        name: 'CustomPlayer',
+        outfit: { baseId: 'default', hatId: 'none', colorHex: '#ffffff' },
+      },
+    });
+    expect(StorageManager.get().profile.name).toBe('CustomPlayer');
+
+    const prevSearch = window.location.search;
+    window.history.pushState({}, '', '?room=public');
+
+    (gameEngine as any).transport = {
+      mode: 'public',
+      assignedName: 'Mossy Fox',
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+      onStatusChange: vi.fn().mockReturnValue(() => {}),
+      onPlayersChange: vi.fn().mockReturnValue(() => {}),
+      onEmote: vi.fn().mockReturnValue(() => {}),
+      sendLocalState: vi.fn(),
+      sendEmote: vi.fn(),
+    };
+
+    render(<App />);
+
+    const { gameEvents } = await import('./engine/events');
+    act(() => {
+      gameEvents.emit('assignedNameChanged', { name: 'Mossy Fox' });
+    });
+
+    // 1. In public mode, HUD shows the server-assigned name
+    expect(screen.getByText('Mossy Fox')).toBeDefined();
+
+    // 2. Open wardrobe panel
+    const wardrobeBtn = screen.getByRole('button', { name: /toggle wardrobe/i });
+    act(() => {
+      fireEvent.click(wardrobeBtn);
+    });
+
+    // Wardrobe shows the hint
+    expect(
+      screen.getByText('Custom names appear in your own rooms only')
+    ).toBeDefined();
+
+    // 3. StorageManager profile.name is unchanged
+    expect(StorageManager.get().profile.name).toBe('CustomPlayer');
+
+    // Cleanup
+    window.history.pushState({}, '', prevSearch || '/');
+    (gameEngine as any).transport = undefined;
+    StorageManager.reset();
   });
 });

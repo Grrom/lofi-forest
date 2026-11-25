@@ -7,7 +7,7 @@ import type {
   PomoBadge,
   ZoneId,
 } from '@lofi/shared';
-import { NET_HEARTBEAT_MS, NET_SEND_HZ } from '@lofi/shared';
+import { NET_HEARTBEAT_MS, NET_SEND_HZ, parseSpectatorParams } from '@lofi/shared';
 import type { Container } from 'pixi.js';
 import type { TransportAdapter } from './TransportAdapter';
 import type { LocalPlayer } from '../entities/LocalPlayer';
@@ -37,6 +37,7 @@ export interface NetSyncOptions {
   pomodoro?: PomodoroController;
   clock?: () => number;
   autoStart?: boolean;
+  hideNames?: boolean;
 }
 
 function hasStateChanged(
@@ -61,6 +62,7 @@ function hasStateChanged(
 export class NetSync {
   public readonly transport: TransportAdapter;
   public readonly remotePlayers: Map<string, RemotePlayer>;
+  public hideNames: boolean;
   private localPlayer?: LocalPlayer;
   private getLocalStateFn?: () => {
     x: number;
@@ -114,6 +116,11 @@ export class NetSync {
     this.events = opts.events ?? gameEvents;
     this.pomodoro = opts.pomodoro ?? pomodoroController;
     this.clock = opts.clock ?? (() => Date.now());
+    this.hideNames =
+      opts.hideNames ??
+      (typeof window !== 'undefined' && window.location
+        ? parseSpectatorParams(window.location.search).hideNames
+        : false);
 
     // Forward GameEvents.localEmote to transport.sendEmote
     const unsubEmote = this.events.on('localEmote', ({ emote }) => {
@@ -185,7 +192,7 @@ export class NetSync {
 
     const name = this.getNameFn
       ? this.getNameFn()
-      : this.localPlayer?.avatar?.playerName ?? StorageManager.get().profile.name;
+      : this.localPlayer?.assignedName ?? this.localPlayer?.avatar?.playerName ?? StorageManager.get().profile.name;
 
     const outfit = this.getOutfitFn
       ? this.getOutfitFn()
@@ -235,9 +242,21 @@ export class NetSync {
     for (const [id, state] of players.entries()) {
       const existing = this.remotePlayers.get(id);
       if (existing) {
+        if (this.hideNames) {
+          existing.hideNames = true;
+        }
         existing.updateState(state, now);
+        if (this.hideNames) {
+          existing.setName(null);
+        }
       } else {
-        const rp = new RemotePlayer(state);
+        const rp = new RemotePlayer(
+          this.hideNames ? { ...state, hideNames: true, name: null } : state
+        );
+        if (this.hideNames) {
+          rp.hideNames = true;
+          rp.setName(null);
+        }
         if (this.worldUiLayer) {
           rp.worldUiLayer = this.worldUiLayer;
         }

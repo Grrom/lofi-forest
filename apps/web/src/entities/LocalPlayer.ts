@@ -99,6 +99,7 @@ export class LocalPlayer {
   public layers?: WorldLayers;
   public collisionMap: CollisionMap;
   public fastTravelSystem?: FastTravelSystem;
+  public assignedName: string | null = null;
 
   public teleportTransition: TeleportTransition | null = null;
   private inFlightTeleportPromise: Promise<void> | null = null;
@@ -108,6 +109,7 @@ export class LocalPlayer {
   private strollWaitUntilMs = 0;
   private doorCooldownUntilMs = 0;
   private lastDoorId: string | null = null;
+  private unsubAssignedName?: () => void;
   private celebrateUntilMs = 0;
   private previousActionBeforeCelebrate: PlayerAction = 'idle';
   private lastEmoteTime = -Infinity;
@@ -166,6 +168,13 @@ export class LocalPlayer {
       this.setStatus(phase);
     });
 
+    this.unsubAssignedName = gameEvents.on('assignedNameChanged', ({ name }) => {
+      this.assignedName = name;
+      if (this.avatar) {
+        this.avatar.setName(name);
+      }
+    });
+
     // Setup Pixi containers if not skipped
     if (!options?.skipPixi && layers) {
       this.setupPixiVisuals();
@@ -186,7 +195,7 @@ export class LocalPlayer {
     const prefs = StorageManager.get();
     this.avatar = new PlayerAvatar({
       outfit: prefs.profile.outfit,
-      name: prefs.profile.name,
+      name: this.assignedName ?? prefs.profile.name,
       showNames: prefs.showNames,
       facing: this.facing,
       action: this.action,
@@ -206,7 +215,7 @@ export class LocalPlayer {
     this.unsubStorage = StorageManager.subscribe((newPrefs) => {
       if (this.avatar) {
         this.avatar.setOutfit(newPrefs.profile.outfit);
-        this.avatar.setName(newPrefs.profile.name);
+        this.avatar.setName(this.assignedName ?? newPrefs.profile.name);
         this.avatar.setShowNames(newPrefs.showNames);
       }
     });
@@ -1087,6 +1096,10 @@ export class LocalPlayer {
     if (this.unsubPomo) {
       this.unsubPomo();
       this.unsubPomo = undefined;
+    }
+    if (this.unsubAssignedName) {
+      this.unsubAssignedName();
+      this.unsubAssignedName = undefined;
     }
     this.afkDetector?.destroy();
     this.avatar?.destroy();

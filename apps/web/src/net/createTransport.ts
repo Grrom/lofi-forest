@@ -2,6 +2,7 @@ import { isValidRoomCode, PUBLIC_ROOM_CODE } from '@lofi/shared';
 import type { TransportAdapter, TransportMode } from './TransportAdapter';
 import { LocalTransport } from './LocalTransport';
 import { TrysteroTransport } from './TrysteroTransport';
+import { WebSocketTransport } from './WebSocketTransport';
 
 export type TransportFactory = (room?: string) => TransportAdapter;
 
@@ -10,6 +11,7 @@ export const transportRegistry = new Map<TransportMode, TransportFactory>();
 // Register default transports
 transportRegistry.set('solo', () => new LocalTransport());
 transportRegistry.set('p2p', (room) => new TrysteroTransport(room ?? ''));
+transportRegistry.set('public', (room) => new WebSocketTransport());
 
 export function registerTransport(mode: TransportMode, factory: TransportFactory): void {
   transportRegistry.set(mode, factory);

@@ -216,7 +216,8 @@ describe('public-server integration tests', () => {
       expect(aliceState).toBeDefined();
       expect(aliceState!.x).toBe(WORLD_WIDTH_PX);
       expect(aliceState!.y).toBe(0);
-      expect(aliceState!.name).toBe('Alice');
+      expect(aliceState!.name).toBe(w1.name);
+      expect(aliceState!.name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+\d?$/);
       expect(aliceState!.zone).toBe('forest');
       expect(aliceState!.action).toBe('walk');
     } finally {
@@ -640,6 +641,131 @@ describe('public-server integration tests', () => {
       });
       expect(closed).toBe(true);
     } finally {
+      await instance.close();
+    }
+  });
+
+  // Acceptance criterion:
+  // Server test: a hello with name "badword" results in a stored and broadcast name matching /^[A-Z][a-z]+ [A-Z][a-z]+\d?$/, never the sent name.
+  it('Server test: a hello with name "badword" results in a stored and broadcast name matching /^[A-Z][a-z]+ [A-Z][a-z]+\d?$/, never the sent name', async () => {
+    const instance = await startServer(0, '127.0.0.1');
+    const clients: TestClient[] = [];
+    try {
+      const c1 = await createTestClient(instance.port, '/ws');
+      const c2 = await createTestClient(instance.port, '/ws');
+      clients.push(c1, c2);
+
+      c1.send({
+        t: 'hello',
+        name: 'badword',
+        outfit: { baseId: 'b1', hatId: 'h1', colorHex: '#ff0000' },
+      });
+      const w1 = await c1.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
+      expect(w1.t).toBe('welcome');
+      expect(w1.name).toBeDefined();
+      expect(w1.name).not.toBe('badword');
+      expect(w1.name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+\d?$/);
+      expect(w1.name!.length).toBeLessThanOrEqual(16);
+
+      c2.send({
+        t: 'hello',
+        name: 'other',
+        outfit: { baseId: 'b2', hatId: 'h2', colorHex: '#00ff00' },
+      });
+      const w2 = await c2.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
+      expect(w2.t).toBe('welcome');
+
+      // c1 sends state
+      c1.send({
+        t: 'state',
+        x: 100,
+        y: 100,
+        zone: 'forest',
+        facing: 'down',
+        action: 'idle',
+        pomo: 'none',
+      });
+
+      // c2 receives snapshot
+      const snap = await c2.waitForMessage<ServerSnapMsg>((m: any) => m.t === 'snap');
+      const p1State = snap.players.find((p) => p.id === w1.id);
+      expect(p1State).toBeDefined();
+      expect(p1State!.name).not.toBe('badword');
+      expect(p1State!.name).toBe(w1.name);
+      expect(p1State!.name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+\d?$/);
+      expect(p1State!.name.length).toBeLessThanOrEqual(16);
+    } finally {
+      clients.forEach((c) => c.terminate());
+      await instance.close();
+    }
+  });
+
+  // Acceptance criterion:
+  // Server test: two players never share a name at the same time.
+  it('Server test: two players never share a name at the same time', async () => {
+    const instance = await startServer(0, '127.0.0.1', {
+      nameRng: () => 0,
+      maxConnPerIp: 10,
+    });
+    const clients: TestClient[] = [];
+    try {
+      const c1 = await createTestClient(instance.port, '/ws');
+      const c2 = await createTestClient(instance.port, '/ws');
+      const c3 = await createTestClient(instance.port, '/ws');
+      clients.push(c1, c2, c3);
+
+      c1.send({
+        t: 'hello',
+        name: 'Player1',
+        outfit: { baseId: 'b', hatId: 'none', colorHex: '#fff' },
+      });
+      const w1 = await c1.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
+
+      c2.send({
+        t: 'hello',
+        name: 'Player2',
+        outfit: { baseId: 'b', hatId: 'none', colorHex: '#fff' },
+      });
+      const w2 = await c2.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
+
+      c3.send({
+        t: 'hello',
+        name: 'Player3',
+        outfit: { baseId: 'b', hatId: 'none', colorHex: '#fff' },
+      });
+      const w3 = await c3.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
+
+      expect(w1.name).toBe('Mossy Fox');
+      expect(w2.name).toBe('Mossy Fox2');
+      expect(w3.name).toBe('Mossy Fox3');
+
+      // Then close the 'Mossy Fox2' client, wait for its close event or the next snap
+      const closePromise = new Promise<void>((resolve) => {
+        c2.ws.once('close', () => resolve());
+      });
+      c2.close();
+      await closePromise;
+      await c1.waitForMessage<ServerSnapMsg>(
+        (m: any) => m.t === 'snap' && m.left && m.left.includes(w2.id)
+      );
+
+      // Connect a fourth player
+      const c4 = await createTestClient(instance.port, '/ws');
+      clients.push(c4);
+      c4.send({
+        t: 'hello',
+        name: 'Player4',
+        outfit: { baseId: 'b', hatId: 'none', colorHex: '#fff' },
+      });
+      const w4 = await c4.waitForMessage<ServerWelcomeMsg>((m: any) => m.t === 'welcome');
+      expect(w4.name).toBeDefined();
+
+      // Assert its name is not one of the names still in use
+      const activeNames = [w1.name, w3.name];
+      expect(activeNames).not.toContain(w4.name);
+      expect(w4.name).toBe('Mossy Fox2');
+    } finally {
+      clients.forEach((c) => c.terminate());
       await instance.close();
     }
   });
