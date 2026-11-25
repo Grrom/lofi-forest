@@ -5,12 +5,14 @@ import {
   type EmoteId,
   type PlayerNetState,
 } from '@lofi/shared';
-import { joinRoom as defaultJoinRoom, type Room } from 'trystero/nostr';
+import { joinRoom as defaultJoinRoom, type Room } from 'trystero';
 import type { TransportAdapter, TransportMode, TransportStatus } from './TransportAdapter';
+
+export type TrysteroJoinRoomFn = (config: any, roomCode: string) => any;
 
 export interface TrysteroTransportOptions {
   password?: string;
-  joinRoomFn?: typeof defaultJoinRoom;
+  joinRoomFn?: TrysteroJoinRoomFn;
   clock?: () => number;
   appId?: string;
   rtcConfig?: RTCConfiguration;
@@ -21,13 +23,13 @@ export class TrysteroTransport implements TransportAdapter {
 
   private roomCode: string;
   private password?: string;
-  private joinRoomFn: typeof defaultJoinRoom;
+  private joinRoomFn: TrysteroJoinRoomFn;
   private clock: () => number;
   private appId?: string;
   private explicitRtcConfig?: RTCConfiguration;
 
   private status: TransportStatus = 'connecting';
-  private room: Room | null = null;
+  private room: any = null;
   private players = new Map<string, PlayerNetState>();
   private peerLastSeen = new Map<string, number>();
   private peerMessageTimestamps = new Map<string, number[]>();
@@ -46,7 +48,7 @@ export class TrysteroTransport implements TransportAdapter {
   constructor(roomCode: string, options?: TrysteroTransportOptions) {
     this.roomCode = roomCode;
     this.password = options?.password;
-    this.joinRoomFn = options?.joinRoomFn ?? defaultJoinRoom;
+    this.joinRoomFn = options?.joinRoomFn ?? (defaultJoinRoom as unknown as TrysteroJoinRoomFn);
     this.clock = options?.clock ?? (() => Date.now());
     this.appId = options?.appId;
     this.explicitRtcConfig = options?.rtcConfig;
@@ -95,12 +97,53 @@ export class TrysteroTransport implements TransportAdapter {
       return;
     }
 
-    const [sendPlayer, onPlayer] = this.room.makeAction('player');
-    const [sendEmote, onEmote] = this.room.makeAction('emote');
-    this.sendPlayerFn = sendPlayer;
-    this.sendEmoteFn = sendEmote;
+    const bindAction = (
+      actionName: string,
+      onData: (data: unknown, peerId: string) => void
+    ): ((data: any, targetPeerId?: string) => void) | null => {
+      if (!this.room || typeof this.room.makeAction !== 'function') return null;
+      const actionResult = this.room.makeAction(actionName);
 
-    onPlayer((data: unknown, peerId: string) => {
+      if (Array.isArray(actionResult)) {
+        const [sendFn, onReceiveFn] = actionResult;
+        if (typeof onReceiveFn === 'function') {
+          onReceiveFn((data: unknown, peerIdOrContext: unknown) => {
+            const peerId =
+              typeof peerIdOrContext === 'object' &&
+              peerIdOrContext !== null &&
+              'peerId' in peerIdOrContext
+                ? String((peerIdOrContext as any).peerId)
+                : String(peerIdOrContext);
+            onData(data, peerId);
+          });
+        }
+        return (data: any, targetPeerId?: string) => {
+          if (targetPeerId !== undefined) {
+            sendFn(data, targetPeerId);
+          } else {
+            sendFn(data);
+          }
+        };
+      } else if (actionResult && typeof actionResult === 'object') {
+        if ('onMessage' in actionResult && typeof actionResult.onMessage === 'function') {
+          actionResult.onMessage((data: unknown, context: any) => {
+            const peerId =
+              typeof context === 'object' && context !== null && 'peerId' in context
+                ? String(context.peerId)
+                : String(context);
+            onData(data, peerId);
+          });
+        }
+        return (data: any, targetPeerId?: string) => {
+          if (typeof actionResult.send === 'function') {
+            actionResult.send(data, targetPeerId ? { target: targetPeerId } : undefined);
+          }
+        };
+      }
+      return null;
+    };
+
+    this.sendPlayerFn = bindAction('player', (data, peerId) => {
       if (!this.checkRateLimit(peerId)) {
         return;
       }
@@ -117,7 +160,7 @@ export class TrysteroTransport implements TransportAdapter {
       this.notifyPlayers();
     });
 
-    onEmote((data: unknown, peerId: string) => {
+    this.sendEmoteFn = bindAction('emote', (data, peerId) => {
       if (!this.checkRateLimit(peerId)) {
         return;
       }
@@ -130,29 +173,45 @@ export class TrysteroTransport implements TransportAdapter {
       this.notifyEmote(peerId, validated.e);
     });
 
-    this.room.onPeerJoin((peerId: string) => {
-      // Broadcast via NetSync, and sent directly to each newly joined peer
-      if (this.latestLocalState && this.sendPlayerFn) {
-        this.sendPlayerFn(this.latestLocalState, peerId);
-      }
-    });
+    if (this.room && typeof this.room.onPeerJoin === 'function') {
+      this.room.onPeerJoin((contextOrPeerId: any) => {
+        const peerId =
+          typeof contextOrPeerId === 'object' &&
+          contextOrPeerId !== null &&
+          'peerId' in contextOrPeerId
+            ? String(contextOrPeerId.peerId)
+            : String(contextOrPeerId);
+        // Broadcast via NetSync, and sent directly to each newly joined peer
+        if (this.latestLocalState && this.sendPlayerFn) {
+          this.sendPlayerFn(this.latestLocalState, peerId);
+        }
+      });
+    }
 
-    this.room.onPeerLeave((peerId: string) => {
-      // after onPeerLeave(A), A is removed
-      if (this.players.has(peerId)) {
-        this.players.delete(peerId);
-        this.peerLastSeen.delete(peerId);
-        this.peerMessageTimestamps.delete(peerId);
-        this.notifyPlayers();
-      }
-    });
+    if (this.room && typeof this.room.onPeerLeave === 'function') {
+      this.room.onPeerLeave((contextOrPeerId: any) => {
+        const peerId =
+          typeof contextOrPeerId === 'object' &&
+          contextOrPeerId !== null &&
+          'peerId' in contextOrPeerId
+            ? String(contextOrPeerId.peerId)
+            : String(contextOrPeerId);
+        // after onPeerLeave(A), A is removed
+        if (this.players.has(peerId)) {
+          this.players.delete(peerId);
+          this.peerLastSeen.delete(peerId);
+          this.peerMessageTimestamps.delete(peerId);
+          this.notifyPlayers();
+        }
+      });
+    }
 
     this.setStatus('connected');
 
     // Cap check: 2 s after joining, if getPeers() returns >= P2P_MAX_PEERS - 1 peers, leave and report room_full
     this.joinCapTimer = setTimeout(() => {
       if (this.status !== 'connected' || !this.room) return;
-      const peers = this.room.getPeers();
+      const peers = typeof this.room.getPeers === 'function' ? this.room.getPeers() : {};
       const peerCount = Array.isArray(peers)
         ? peers.length
         : typeof peers === 'object' && peers !== null
@@ -199,7 +258,11 @@ export class TrysteroTransport implements TransportAdapter {
 
     if (this.room) {
       try {
-        this.room.leaveRoom();
+        if (typeof this.room.leave === 'function') {
+          this.room.leave();
+        } else if (typeof this.room.leaveRoom === 'function') {
+          this.room.leaveRoom();
+        }
       } catch (err) {
         // ignore
       }

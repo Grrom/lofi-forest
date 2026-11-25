@@ -7,7 +7,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@lofi/shared': resolve(__dirname, '../../packages/shared/src/index.ts'),
-      'trystero/nostr': resolve(__dirname, 'src/net/trystero.ts'),
     },
   },
   build: {

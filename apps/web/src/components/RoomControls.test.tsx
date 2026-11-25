@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import React from 'react';
 import { RoomControls } from './RoomControls';
-import * as trysteroModule from 'trystero/nostr';
+import { joinRoom } from 'trystero';
+
+vi.mock('trystero', () => ({
+  joinRoom: vi.fn(),
+}));
 
 describe('RoomControls and URL handling', () => {
   let mockRoom: any;
@@ -15,12 +19,13 @@ describe('RoomControls and URL handling', () => {
       onPeerLeave: vi.fn(),
       getPeers: vi.fn(() => ({})),
       leaveRoom: vi.fn(),
+      leave: vi.fn(),
     };
-    joinRoomSpy = vi.spyOn(trysteroModule, 'joinRoom').mockImplementation(() => mockRoom);
+    joinRoomSpy = vi.mocked(joinRoom).mockImplementation(() => mockRoom);
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
     window.history.replaceState(null, '', '/');
   });
 

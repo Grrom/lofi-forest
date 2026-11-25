@@ -10,10 +10,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "baseUrl": ".",
-    "paths": {
-      "trystero/nostr": ["src/net/trystero.ts"]
-    }
+    "baseUrl": "."
   },
   "include": ["src/**/*", "vite.config.ts"]
 }

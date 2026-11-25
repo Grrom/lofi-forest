@@ -275,4 +275,63 @@ describe('TrysteroTransport', () => {
 
     transport.disconnect();
   });
+
+  it('works with real Trystero 0.27 object action and context callbacks', async () => {
+    let peerJoinCb: ((ctx: { peerId: string }) => void) | null = null;
+    let peerLeaveCb: ((ctx: { peerId: string }) => void) | null = null;
+    const actionMessageCbs = new Map<string, (data: any, ctx: { peerId: string }) => void>();
+    const sendFn = vi.fn();
+    const leaveFn = vi.fn();
+
+    const mock027Room = {
+      makeAction: vi.fn((actionName: string) => ({
+        send: sendFn,
+        onMessage: (cb: any) => {
+          actionMessageCbs.set(actionName, cb);
+        },
+      })),
+      onPeerJoin: vi.fn((cb: any) => {
+        peerJoinCb = cb;
+      }),
+      onPeerLeave: vi.fn((cb: any) => {
+        peerLeaveCb = cb;
+      }),
+      getPeers: vi.fn(() => ({ peer1: {} })),
+      leave: leaveFn,
+    };
+
+    const transport = new TrysteroTransport('pine-200', {
+      joinRoomFn: (() => mock027Room) as any,
+    });
+    await transport.connect();
+
+    let lastPlayers: Map<string, PlayerNetState> = new Map();
+    transport.onPlayersChange((p) => {
+      lastPlayers = p;
+    });
+
+    // Receive player state via onMessage
+    actionMessageCbs.get('player')?.(validPlayerPayload, { peerId: 'peer_abc' });
+    expect(lastPlayers.has('peer_abc')).toBe(true);
+
+    // Send local state sends via action.send
+    transport.sendLocalState(validPlayerPayload);
+    expect(sendFn).toHaveBeenCalledWith(validPlayerPayload, undefined);
+
+    // Peer join context object
+    if (peerJoinCb) {
+      (peerJoinCb as (ctx: { peerId: string }) => void)({ peerId: 'peer_xyz' });
+    }
+    expect(sendFn).toHaveBeenCalledWith(validPlayerPayload, { target: 'peer_xyz' });
+
+    // Peer leave context object
+    if (peerLeaveCb) {
+      (peerLeaveCb as (ctx: { peerId: string }) => void)({ peerId: 'peer_abc' });
+    }
+    expect(lastPlayers.has('peer_abc')).toBe(false);
+
+    // Disconnect invokes room.leave()
+    transport.disconnect();
+    expect(leaveFn).toHaveBeenCalled();
+  });
 });
