@@ -236,15 +236,16 @@ export function createServer(options?: Partial<ServerConfig>) {
       } else {
         timestamps = [];
       }
-      turnIpRequests.set(clientIp, timestamps);
 
       if (timestamps.length >= 10) {
+        turnIpRequests.set(clientIp, timestamps);
         res.writeHead(429, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Too Many Requests' }));
         return;
       }
 
       timestamps.push(now);
+      turnIpRequests.set(clientIp, timestamps);
 
       void (async () => {
         try {
@@ -256,6 +257,7 @@ export function createServer(options?: Partial<ServerConfig>) {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({ ttl: 3600 }),
+            signal: AbortSignal.timeout(5000),
           });
 
           if (!cfRes.ok) {
@@ -273,6 +275,15 @@ export function createServer(options?: Partial<ServerConfig>) {
             : Array.isArray(data?.result?.iceServers)
               ? data.result.iceServers
               : [];
+
+          if (iceServers.length === 0) {
+            console.error('[TURN] Cloudflare returned empty iceServers list');
+            if (!res.headersSent) {
+              res.writeHead(502, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Failed to generate TURN credentials' }));
+            }
+            return;
+          }
 
           if (!res.headersSent) {
             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -592,6 +603,16 @@ export function createServer(options?: Partial<ServerConfig>) {
         client.terminate();
       } else {
         client.ping();
+      }
+    }
+
+    // Prune stale rate-limit entries
+    for (const [ip, timestamps] of turnIpRequests.entries()) {
+      const active = timestamps.filter((t) => now - t < 60000);
+      if (active.length === 0) {
+        turnIpRequests.delete(ip);
+      } else {
+        turnIpRequests.set(ip, active);
       }
     }
   }, config.pingIntervalMs);

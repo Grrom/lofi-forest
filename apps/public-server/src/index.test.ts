@@ -904,7 +904,7 @@ describe('public-server integration tests', () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: async () => ({ iceServers: [] }),
+          json: async () => ({ iceServers: [{ urls: ['stun:stun.cloudflare.com:3478'] }] }),
         } as Response);
       }
       return originalFetch(url, options);
@@ -943,6 +943,74 @@ describe('public-server integration tests', () => {
       errorSpy.mockRestore();
       warnSpy.mockRestore();
       infoSpy.mockRestore();
+      globalThis.fetch = originalFetch;
+      if (instance) await instance.close();
+    }
+  });
+
+  it('GET /turn returns 502 when Cloudflare returns an empty iceServers list', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url: any) => {
+      const urlStr = String(url);
+      if (urlStr.startsWith('https://rtc.live.cloudflare.com/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ iceServers: [] }),
+        } as Response;
+      }
+      return originalFetch(url);
+    });
+
+    let instance: any = null;
+    try {
+      instance = await startServer(0, '127.0.0.1', {
+        turnKeyId: 'key-test',
+        turnKeyApiToken: 'token-test',
+      });
+
+      const res = await fetch(`http://127.0.0.1:${instance.port}/turn`);
+      expect(res.status).toBe(502);
+      const data = await res.json();
+      expect(data).toEqual({ error: 'Failed to generate TURN credentials' });
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (instance) await instance.close();
+    }
+  });
+
+  it('heartbeat interval prunes inactive TURN rate limit entries from memory', async () => {
+    let instance: any = null;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url: any) => {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ iceServers: [{ urls: ['stun:stun.cloudflare.com:3478'] }] }),
+      } as Response;
+    });
+
+    try {
+      instance = await startServer(0, '127.0.0.1', {
+        turnKeyId: 'key-test',
+        turnKeyApiToken: 'token-test',
+        pingIntervalMs: 50,
+      });
+
+      // Issue a request
+      const res = await fetch(`http://127.0.0.1:${instance.port}/turn`);
+      expect(res.status).toBe(200);
+
+      // Wait for heartbeat cycle to sweep old timestamps
+      // Timestamps expire after 60s, so let's mock Date.now() or advance time
+      const realNow = Date.now;
+      try {
+        Date.now = () => realNow() + 65000;
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      } finally {
+        Date.now = realNow;
+      }
+    } finally {
       globalThis.fetch = originalFetch;
       if (instance) await instance.close();
     }

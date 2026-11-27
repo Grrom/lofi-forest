@@ -49,6 +49,11 @@ export class TrysteroTransport implements TransportAdapter {
   private joinCapTimer: any = null;
   private cleanupInterval: any = null;
 
+  private connectPromise: Promise<void> | null = null;
+  private turnAbortController: AbortController | null = null;
+  private isDisposed = false;
+  private connectGeneration = 0;
+
   constructor(roomCode: string, options?: TrysteroTransportOptions) {
     this.roomCode = roomCode;
     this.password = options?.password;
@@ -60,99 +65,143 @@ export class TrysteroTransport implements TransportAdapter {
     this.iceServersJson = options?.iceServersJson;
   }
 
-  public async connect(): Promise<void> {
-    if (this.room) return;
+  public connect(): Promise<void> {
+    if (this.room) return Promise.resolve();
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
 
+    const currentGen = ++this.connectGeneration;
+    this.isDisposed = false;
     this.setStatus('connecting');
 
-    const appId =
-      this.appId ??
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TRYSTERO_APP_ID
-        ? String(import.meta.env.VITE_TRYSTERO_APP_ID)
-        : typeof process !== 'undefined' && process.env?.VITE_TRYSTERO_APP_ID
-          ? String(process.env.VITE_TRYSTERO_APP_ID)
-          : 'lofi-forest');
+    const inFlightPromise = (async () => {
+      const appId =
+        this.appId ??
+        (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TRYSTERO_APP_ID
+          ? String(import.meta.env.VITE_TRYSTERO_APP_ID)
+          : typeof process !== 'undefined' && process.env?.VITE_TRYSTERO_APP_ID
+            ? String(process.env.VITE_TRYSTERO_APP_ID)
+            : 'lofi-forest');
 
-    const turnUrl =
-      this.turnUrl ??
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TURN_URL
-        ? String(import.meta.env.VITE_TURN_URL)
-        : typeof process !== 'undefined' && process.env?.VITE_TURN_URL
-          ? String(process.env.VITE_TURN_URL)
-          : undefined);
+      const turnUrl =
+        this.turnUrl ??
+        (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TURN_URL
+          ? String(import.meta.env.VITE_TURN_URL)
+          : typeof process !== 'undefined' && process.env?.VITE_TURN_URL
+            ? String(process.env.VITE_TURN_URL)
+            : undefined);
 
-    const iceServersJson =
-      this.iceServersJson ??
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ICE_SERVERS_JSON
-        ? String(import.meta.env.VITE_ICE_SERVERS_JSON)
-        : typeof process !== 'undefined' && process.env?.VITE_ICE_SERVERS_JSON
-          ? String(process.env.VITE_ICE_SERVERS_JSON)
-          : undefined);
+      const iceServersJson =
+        this.iceServersJson ??
+        (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ICE_SERVERS_JSON
+          ? String(import.meta.env.VITE_ICE_SERVERS_JSON)
+          : typeof process !== 'undefined' && process.env?.VITE_ICE_SERVERS_JSON
+            ? String(process.env.VITE_ICE_SERVERS_JSON)
+            : undefined);
 
-    let iceServers: RTCIceServer[] | undefined;
+      let iceServers: RTCIceServer[] | undefined;
 
-    if (turnUrl && turnUrl.trim().length > 0) {
-      try {
-        const controller = new AbortController();
-        let timeoutHandle: any;
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timeoutHandle = setTimeout(() => {
-            controller.abort();
-            reject(new Error('TURN fetch timeout'));
-          }, 3000);
-        });
-
-        const fetchPromise = (async () => {
-          const res = await fetch(turnUrl.trim(), { signal: controller.signal });
-          if (!res.ok) {
-            throw new Error(`TURN fetch failed with status ${res.status}`);
-          }
-          const data = (await res.json()) as { iceServers?: RTCIceServer[] };
-          if (!data || !Array.isArray(data.iceServers)) {
-            throw new Error('TURN fetch returned invalid iceServers');
-          }
-          return data.iceServers;
-        })();
-
+      if (turnUrl && turnUrl.trim().length > 0) {
         try {
-          iceServers = await Promise.race([fetchPromise, timeoutPromise]);
-        } finally {
-          clearTimeout(timeoutHandle);
-          fetchPromise.catch(() => {});
+          const controller = new AbortController();
+          this.turnAbortController = controller;
+          let timeoutHandle: any;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutHandle = setTimeout(() => {
+              controller.abort();
+              reject(new Error('TURN fetch timeout'));
+            }, 3000);
+          });
+
+          const fetchPromise = (async () => {
+            const res = await fetch(turnUrl.trim(), { signal: controller.signal });
+            if (!res.ok) {
+              throw new Error(`TURN fetch failed with status ${res.status}`);
+            }
+            const data = (await res.json()) as { iceServers?: RTCIceServer[] };
+            if (!data || !Array.isArray(data.iceServers) || data.iceServers.length === 0) {
+              throw new Error('TURN fetch returned invalid or empty iceServers');
+            }
+            return data.iceServers;
+          })();
+
+          try {
+            iceServers = await Promise.race([fetchPromise, timeoutPromise]);
+          } finally {
+            clearTimeout(timeoutHandle);
+            fetchPromise.catch(() => {});
+            if (this.turnAbortController === controller) {
+              this.turnAbortController = null;
+            }
+          }
+        } catch (err) {
+          if (this.isDisposed || this.connectGeneration !== currentGen) {
+            this.setStatus('disconnected');
+            return;
+          }
+          console.warn('[TrysteroTransport] Failed to fetch TURN credentials, falling back:', err);
         }
-      } catch (err) {
-        console.warn('[TrysteroTransport] Failed to fetch TURN credentials, falling back:', err);
       }
-    }
 
-    if (!iceServers && iceServersJson && iceServersJson.trim().length > 0) {
+      if (this.isDisposed || this.connectGeneration !== currentGen) {
+        this.setStatus('disconnected');
+        return;
+      }
+
+      if (!iceServers && iceServersJson && iceServersJson.trim().length > 0) {
+        try {
+          iceServers = JSON.parse(iceServersJson.trim());
+        } catch (err) {
+          console.warn('[TrysteroTransport] Failed to parse VITE_ICE_SERVERS_JSON:', err);
+        }
+      }
+
+      if (this.isDisposed || this.connectGeneration !== currentGen) {
+        this.setStatus('disconnected');
+        return;
+      }
+
+      const rtcConfig: RTCConfiguration = {
+        ...this.explicitRtcConfig,
+        ...(iceServers ? { iceServers } : {}),
+      };
+
+      const config: { appId: string; password?: string; rtcConfig?: RTCConfiguration } = {
+        appId,
+        rtcConfig,
+      };
+      if (this.password) {
+        config.password = this.password;
+      }
+
+      if (this.isDisposed || this.connectGeneration !== currentGen) {
+        this.setStatus('disconnected');
+        return;
+      }
+
       try {
-        iceServers = JSON.parse(iceServersJson.trim());
+        this.room = this.joinRoomFn(config, this.roomCode);
       } catch (err) {
-        console.warn('[TrysteroTransport] Failed to parse VITE_ICE_SERVERS_JSON:', err);
+        console.error('[TrysteroTransport] joinRoom failed:', err);
+        this.setStatus('disconnected');
+        return;
       }
-    }
 
-    const rtcConfig: RTCConfiguration = {
-      ...this.explicitRtcConfig,
-      ...(iceServers ? { iceServers } : {}),
-    };
-
-    const config: { appId: string; password?: string; rtcConfig?: RTCConfiguration } = {
-      appId,
-      rtcConfig,
-    };
-    if (this.password) {
-      config.password = this.password;
-    }
-
-    try {
-      this.room = this.joinRoomFn(config, this.roomCode);
-    } catch (err) {
-      console.error('[TrysteroTransport] joinRoom failed:', err);
-      this.setStatus('disconnected');
-      return;
-    }
+      if (this.isDisposed || this.connectGeneration !== currentGen) {
+        if (this.room) {
+          try {
+            if (typeof this.room.leave === 'function') {
+              this.room.leave();
+            } else if (typeof this.room.leaveRoom === 'function') {
+              this.room.leaveRoom();
+            }
+          } catch {}
+          this.room = null;
+        }
+        this.setStatus('disconnected');
+        return;
+      }
 
     const bindAction = (
       actionName: string,
@@ -297,6 +346,14 @@ export class TrysteroTransport implements TransportAdapter {
         this.notifyPlayers();
       }
     }, 1000);
+    })().finally(() => {
+      if (this.connectPromise === inFlightPromise) {
+        this.connectPromise = null;
+      }
+    });
+
+    this.connectPromise = inFlightPromise;
+    return this.connectPromise;
   }
 
   public disconnect(): void {
@@ -304,6 +361,17 @@ export class TrysteroTransport implements TransportAdapter {
   }
 
   private leaveAndCleanup(setDisconnected: boolean): void {
+    this.isDisposed = true;
+    this.connectGeneration++;
+    this.connectPromise = null;
+
+    if (this.turnAbortController) {
+      try {
+        this.turnAbortController.abort();
+      } catch {}
+      this.turnAbortController = null;
+    }
+
     if (this.joinCapTimer) {
       clearTimeout(this.joinCapTimer);
       this.joinCapTimer = null;
