@@ -334,4 +334,98 @@ describe('TrysteroTransport', () => {
     transport.disconnect();
     expect(leaveFn).toHaveBeenCalled();
   });
+
+  // Acceptance criterion:
+  // Client test: a successful fetch passes iceServers into rtcConfig; a 3 s timeout falls back to VITE_ICE_SERVERS_JSON.
+  it('Client test: a successful fetch passes iceServers into rtcConfig; a 3 s timeout falls back to VITE_ICE_SERVERS_JSON.', async () => {
+    const originalFetch = globalThis.fetch;
+    const mockIceServers = [{ urls: ['stun:stun.cloudflare.com:3478'] }];
+    const fallbackServers = [{ urls: ['stun:stun.fallback.com:3478'] }];
+
+    try {
+      // 1. Successful fetch passes iceServers into rtcConfig
+      globalThis.fetch = vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ iceServers: mockIceServers }),
+      } as Response));
+
+      const mockSuccess = createMockRoom();
+      const joinRoomSuccessFn = vi.fn(() => mockSuccess.room);
+
+      const transportSuccess = new TrysteroTransport('pine-100', {
+        joinRoomFn: joinRoomSuccessFn as any,
+        turnUrl: 'http://localhost:8080/turn',
+      });
+      await transportSuccess.connect();
+
+      expect(joinRoomSuccessFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rtcConfig: expect.objectContaining({
+            iceServers: mockIceServers,
+          }),
+        }),
+        'pine-100'
+      );
+      transportSuccess.disconnect();
+
+      // 2. A 3 s timeout falls back to VITE_ICE_SERVERS_JSON
+      vi.useFakeTimers();
+
+      // Fetch that never resolves within 3 s
+      globalThis.fetch = vi.fn(() => new Promise<Response>(() => {}));
+
+      const mockTimeout = createMockRoom();
+      const joinRoomTimeoutFn = vi.fn(() => mockTimeout.room);
+
+      const transportTimeout = new TrysteroTransport('pine-100', {
+        joinRoomFn: joinRoomTimeoutFn as any,
+        turnUrl: 'http://localhost:8080/turn',
+        iceServersJson: JSON.stringify(fallbackServers),
+      });
+
+      const connectPromise = transportTimeout.connect();
+      await vi.advanceTimersByTimeAsync(3000);
+      await connectPromise;
+
+      expect(joinRoomTimeoutFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rtcConfig: expect.objectContaining({
+            iceServers: fallbackServers,
+          }),
+        }),
+        'pine-100'
+      );
+      transportTimeout.disconnect();
+
+      // Also test via import.meta.env
+      vi.stubEnv('VITE_TURN_URL', 'http://localhost:8080/turn');
+      vi.stubEnv('VITE_ICE_SERVERS_JSON', JSON.stringify(fallbackServers));
+
+      const mockEnvTimeout = createMockRoom();
+      const joinRoomEnvTimeoutFn = vi.fn(() => mockEnvTimeout.room);
+
+      const transportEnv = new TrysteroTransport('pine-100', {
+        joinRoomFn: joinRoomEnvTimeoutFn as any,
+      });
+
+      const connectEnvPromise = transportEnv.connect();
+      await vi.advanceTimersByTimeAsync(3000);
+      await connectEnvPromise;
+
+      expect(joinRoomEnvTimeoutFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rtcConfig: expect.objectContaining({
+            iceServers: fallbackServers,
+          }),
+        }),
+        'pine-100'
+      );
+      transportEnv.disconnect();
+    } finally {
+      vi.unstubAllEnvs();
+      globalThis.fetch = originalFetch;
+      vi.useRealTimers();
+    }
+  });
 });

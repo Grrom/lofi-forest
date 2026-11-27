@@ -16,6 +16,8 @@ export interface TrysteroTransportOptions {
   clock?: () => number;
   appId?: string;
   rtcConfig?: RTCConfiguration;
+  turnUrl?: string;
+  iceServersJson?: string;
 }
 
 export class TrysteroTransport implements TransportAdapter {
@@ -27,6 +29,8 @@ export class TrysteroTransport implements TransportAdapter {
   private clock: () => number;
   private appId?: string;
   private explicitRtcConfig?: RTCConfiguration;
+  private turnUrl?: string;
+  private iceServersJson?: string;
 
   private status: TransportStatus = 'connecting';
   private room: any = null;
@@ -52,6 +56,8 @@ export class TrysteroTransport implements TransportAdapter {
     this.clock = options?.clock ?? (() => Date.now());
     this.appId = options?.appId;
     this.explicitRtcConfig = options?.rtcConfig;
+    this.turnUrl = options?.turnUrl;
+    this.iceServersJson = options?.iceServersJson;
   }
 
   public async connect(): Promise<void> {
@@ -63,23 +69,74 @@ export class TrysteroTransport implements TransportAdapter {
       this.appId ??
       (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TRYSTERO_APP_ID
         ? String(import.meta.env.VITE_TRYSTERO_APP_ID)
-        : 'lofi-forest');
+        : typeof process !== 'undefined' && process.env?.VITE_TRYSTERO_APP_ID
+          ? String(process.env.VITE_TRYSTERO_APP_ID)
+          : 'lofi-forest');
+
+    const turnUrl =
+      this.turnUrl ??
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TURN_URL
+        ? String(import.meta.env.VITE_TURN_URL)
+        : typeof process !== 'undefined' && process.env?.VITE_TURN_URL
+          ? String(process.env.VITE_TURN_URL)
+          : undefined);
+
+    const iceServersJson =
+      this.iceServersJson ??
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_ICE_SERVERS_JSON
+        ? String(import.meta.env.VITE_ICE_SERVERS_JSON)
+        : typeof process !== 'undefined' && process.env?.VITE_ICE_SERVERS_JSON
+          ? String(process.env.VITE_ICE_SERVERS_JSON)
+          : undefined);
 
     let iceServers: RTCIceServer[] | undefined;
-    if (
-      typeof import.meta !== 'undefined' &&
-      import.meta.env?.VITE_ICE_SERVERS_JSON &&
-      typeof import.meta.env.VITE_ICE_SERVERS_JSON === 'string'
-    ) {
+
+    if (turnUrl && turnUrl.trim().length > 0) {
       try {
-        iceServers = JSON.parse(import.meta.env.VITE_ICE_SERVERS_JSON);
+        const controller = new AbortController();
+        let timeoutHandle: any;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            controller.abort();
+            reject(new Error('TURN fetch timeout'));
+          }, 3000);
+        });
+
+        const fetchPromise = (async () => {
+          const res = await fetch(turnUrl.trim(), { signal: controller.signal });
+          if (!res.ok) {
+            throw new Error(`TURN fetch failed with status ${res.status}`);
+          }
+          const data = (await res.json()) as { iceServers?: RTCIceServer[] };
+          if (!data || !Array.isArray(data.iceServers)) {
+            throw new Error('TURN fetch returned invalid iceServers');
+          }
+          return data.iceServers;
+        })();
+
+        try {
+          iceServers = await Promise.race([fetchPromise, timeoutPromise]);
+        } finally {
+          clearTimeout(timeoutHandle);
+          fetchPromise.catch(() => {});
+        }
+      } catch (err) {
+        console.warn('[TrysteroTransport] Failed to fetch TURN credentials, falling back:', err);
+      }
+    }
+
+    if (!iceServers && iceServersJson && iceServersJson.trim().length > 0) {
+      try {
+        iceServers = JSON.parse(iceServersJson.trim());
       } catch (err) {
         console.warn('[TrysteroTransport] Failed to parse VITE_ICE_SERVERS_JSON:', err);
       }
     }
 
-    const rtcConfig: RTCConfiguration =
-      this.explicitRtcConfig ?? (iceServers ? { iceServers } : {});
+    const rtcConfig: RTCConfiguration = {
+      ...this.explicitRtcConfig,
+      ...(iceServers ? { iceServers } : {}),
+    };
 
     const config: { appId: string; password?: string; rtcConfig?: RTCConfiguration } = {
       appId,

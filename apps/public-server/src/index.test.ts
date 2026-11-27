@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import {
   WORLD_WIDTH_PX,
@@ -767,6 +767,184 @@ describe('public-server integration tests', () => {
     } finally {
       clients.forEach((c) => c.terminate());
       await instance.close();
+    }
+  });
+
+  // Acceptance criterion:
+  // Server test (Cloudflare fetch mocked): GET /turn returns the mocked iceServers; the 11th request in a minute from one IP gets 429; a disallowed Origin gets no CORS header; with the env vars unset it returns 404.
+  it('Server test (Cloudflare fetch mocked): GET /turn returns the mocked iceServers; the 11th request in a minute from one IP gets 429; a disallowed Origin gets no CORS header; with the env vars unset it returns 404.', async () => {
+    const mockIceServers = [
+      { urls: ['stun:stun.cloudflare.com:3478'] },
+      {
+        urls: [
+          'turn:turn.cloudflare.com:3478?transport=udp',
+          'turn:turn.cloudflare.com:443?transport=tcp',
+        ],
+        username: 'cf-test-user',
+        credential: 'cf-test-credential',
+      },
+    ];
+
+    const originalFetch = globalThis.fetch;
+    const cfFetchSpy = vi.fn(async (url: any, options?: any) => {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ iceServers: mockIceServers }),
+      } as Response;
+    });
+
+    globalThis.fetch = (url: any, options?: any) => {
+      const urlStr = String(url);
+      if (urlStr.startsWith('https://rtc.live.cloudflare.com/')) {
+        return cfFetchSpy(url, options);
+      }
+      return originalFetch(url, options);
+    };
+
+    let instanceWithTurn: any = null;
+    let instanceNoTurn: any = null;
+
+    try {
+      // 1. GET /turn returns the mocked iceServers
+      instanceWithTurn = await startServer(0, '127.0.0.1', {
+        turnKeyId: 'cf-key-123',
+        turnKeyApiToken: 'cf-token-secret',
+        allowedOrigins: ['http://allowed.com'],
+        trustCfHeader: true,
+      });
+
+      const res1 = await fetch(`http://127.0.0.1:${instanceWithTurn.port}/turn`);
+      expect(res1.status).toBe(200);
+      const data1 = await res1.json();
+      expect(data1).toEqual({ iceServers: mockIceServers });
+      expect(cfFetchSpy).toHaveBeenCalledWith(
+        'https://rtc.live.cloudflare.com/v1/turn/keys/cf-key-123/credentials/generate-ice-servers',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer cf-token-secret',
+            'Content-Type': 'application/json',
+          }),
+          body: JSON.stringify({ ttl: 3600 }),
+        })
+      );
+
+      // 2. The 11th request in a minute from one IP gets 429
+      // We already made 1 request above from 127.0.0.1. Make 9 more (total 10):
+      for (let i = 2; i <= 10; i++) {
+        const res = await fetch(`http://127.0.0.1:${instanceWithTurn.port}/turn`);
+        expect(res.status).toBe(200);
+      }
+
+      // The 11th request from the same IP (127.0.0.1) gets 429
+      const res11 = await fetch(`http://127.0.0.1:${instanceWithTurn.port}/turn`);
+      expect(res11.status).toBe(429);
+      const data11 = await res11.json();
+      expect(data11).toEqual({ error: 'Too Many Requests' });
+
+      // 3. A disallowed Origin gets no CORS header
+      // Using a different IP via cf-connecting-ip to avoid the rate limit hit on 127.0.0.1
+      const resDisallowed = await fetch(`http://127.0.0.1:${instanceWithTurn.port}/turn`, {
+        headers: {
+          Origin: 'http://disallowed.com',
+          'cf-connecting-ip': '198.51.100.1',
+        },
+      });
+      expect(resDisallowed.headers.get('access-control-allow-origin')).toBeNull();
+
+      // Allowed Origin gets CORS header
+      const resAllowed = await fetch(`http://127.0.0.1:${instanceWithTurn.port}/turn`, {
+        headers: {
+          Origin: 'http://allowed.com',
+          'cf-connecting-ip': '198.51.100.2',
+        },
+      });
+      expect(resAllowed.headers.get('access-control-allow-origin')).toBe('http://allowed.com');
+
+      // 4. With the env vars unset it returns 404
+      instanceNoTurn = await startServer(0, '127.0.0.1', {
+        turnKeyId: undefined,
+        turnKeyApiToken: undefined,
+      });
+
+      const resNoTurn = await fetch(`http://127.0.0.1:${instanceNoTurn.port}/turn`);
+      expect(resNoTurn.status).toBe(404);
+      const dataNoTurn = await resNoTurn.json();
+      expect(dataNoTurn).toEqual({ error: 'Not Found' });
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (instanceWithTurn) await instanceWithTurn.close();
+      if (instanceNoTurn) await instanceNoTurn.close();
+    }
+  });
+
+  // Acceptance criterion:
+  // Server test: a console spy never sees the token value.
+  it('Server test: a console spy never sees the token value.', async () => {
+    const sensitiveToken = 'SUPER_SECRET_TOKEN_VALUE_XYZ_98765';
+    const logSpy = vi.spyOn(console, 'log');
+    const errorSpy = vi.spyOn(console, 'error');
+    const warnSpy = vi.spyOn(console, 'warn');
+    const infoSpy = vi.spyOn(console, 'info');
+
+    const originalFetch = globalThis.fetch;
+    let failFetch = false;
+
+    globalThis.fetch = (url: any, options?: any) => {
+      const urlStr = String(url);
+      if (urlStr.startsWith('https://rtc.live.cloudflare.com/')) {
+        if (failFetch) {
+          return Promise.resolve({
+            ok: false,
+            status: 500,
+            json: async () => ({ error: 'Cloudflare failure' }),
+          } as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ iceServers: [] }),
+        } as Response);
+      }
+      return originalFetch(url, options);
+    };
+
+    let instance: any = null;
+    try {
+      instance = await startServer(0, '127.0.0.1', {
+        turnKeyId: 'my-turn-key',
+        turnKeyApiToken: sensitiveToken,
+      });
+
+      // 1. Success request
+      await fetch(`http://127.0.0.1:${instance.port}/turn`);
+
+      // 2. Upstream failure request
+      failFetch = true;
+      await fetch(`http://127.0.0.1:${instance.port}/turn`, {
+        headers: { 'cf-connecting-ip': '192.0.2.1' },
+      });
+
+      // Check all recorded console outputs across all spies
+      const allLoggedContent = [
+        ...logSpy.mock.calls,
+        ...errorSpy.mock.calls,
+        ...warnSpy.mock.calls,
+        ...infoSpy.mock.calls,
+      ]
+        .flat()
+        .map(String)
+        .join(' ');
+
+      expect(allLoggedContent).not.toContain(sensitiveToken);
+    } finally {
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+      infoSpy.mockRestore();
+      globalThis.fetch = originalFetch;
+      if (instance) await instance.close();
     }
   });
 });
