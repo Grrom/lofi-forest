@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { gameEngine } from './engine/game';
 
+if (typeof window !== 'undefined') {
+  (window as any).__gameEngine = gameEngine;
+}
+
 export async function initApp() {
   const app = await gameEngine.init();
 

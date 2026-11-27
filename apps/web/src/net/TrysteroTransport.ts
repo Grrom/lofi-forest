@@ -181,11 +181,20 @@ export class TrysteroTransport implements TransportAdapter {
       }
 
       try {
+        console.log(
+          `[TrysteroTransport] joining room "${this.roomCode}" (appId: ${appId}, password: ${Boolean(this.password)})`
+        );
         this.room = this.joinRoomFn(config, this.roomCode);
       } catch (err) {
         console.error('[TrysteroTransport] joinRoom failed:', err);
         this.setStatus('disconnected');
         return;
+      }
+
+      if (this.room && typeof this.room.onError === 'function') {
+        this.room.onError((err: any) => {
+          console.error('[TrysteroTransport] room error:', err);
+        });
       }
 
       if (this.isDisposed || this.connectGeneration !== currentGen) {
@@ -287,6 +296,7 @@ export class TrysteroTransport implements TransportAdapter {
           'peerId' in contextOrPeerId
             ? String(contextOrPeerId.peerId)
             : String(contextOrPeerId);
+        console.log(`[TrysteroTransport] peer joined: ${peerId}`);
         // Broadcast via NetSync, and sent directly to each newly joined peer
         if (this.latestLocalState && this.sendPlayerFn) {
           this.sendPlayerFn(this.latestLocalState, peerId);
@@ -302,6 +312,7 @@ export class TrysteroTransport implements TransportAdapter {
           'peerId' in contextOrPeerId
             ? String(contextOrPeerId.peerId)
             : String(contextOrPeerId);
+        console.log(`[TrysteroTransport] peer left: ${peerId}`);
         // after onPeerLeave(A), A is removed
         if (this.players.has(peerId)) {
           this.players.delete(peerId);
