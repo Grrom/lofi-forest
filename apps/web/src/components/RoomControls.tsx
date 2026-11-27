@@ -185,11 +185,43 @@ export function RoomControls({ onTransportChange }: RoomControlsProps) {
     }
   };
 
-  const handleCopyLink = () => {
-    if (typeof window !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href);
+  const handleCopyLink = async () => {
+    if (typeof window === 'undefined') return;
+    const url = window.location.href;
+    let success = false;
+
+    if (navigator?.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(url);
+        success = true;
+      } catch (err) {
+        console.warn('[RoomControls] navigator.clipboard.writeText failed:', err);
+      }
+    }
+
+    if (!success && typeof document !== 'undefined') {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = url;
+        textArea.style.position = 'fixed';
+        textArea.style.top = '0';
+        textArea.style.left = '0';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        success = document.execCommand('copy');
+        document.body.removeChild(textArea);
+      } catch (err) {
+        console.warn('[RoomControls] document.execCommand fallback failed:', err);
+      }
+    }
+
+    if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    } else {
+      window.prompt('Copy room link:', url);
     }
   };
 
