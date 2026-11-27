@@ -334,4 +334,204 @@ describe('TrysteroTransport', () => {
     transport.disconnect();
     expect(leaveFn).toHaveBeenCalled();
   });
+
+  // Acceptance criterion:
+  // Client test: a successful fetch passes iceServers into rtcConfig; a 3 s timeout falls back to VITE_ICE_SERVERS_JSON.
+  it('Client test: a successful fetch passes iceServers into rtcConfig; a 3 s timeout falls back to VITE_ICE_SERVERS_JSON.', async () => {
+    const originalFetch = globalThis.fetch;
+    const mockIceServers = [{ urls: ['stun:stun.cloudflare.com:3478'] }];
+    const fallbackServers = [{ urls: ['stun:stun.fallback.com:3478'] }];
+
+    try {
+      // 1. Successful fetch passes iceServers into rtcConfig
+      globalThis.fetch = vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ iceServers: mockIceServers }),
+      } as Response));
+
+      const mockSuccess = createMockRoom();
+      const joinRoomSuccessFn = vi.fn(() => mockSuccess.room);
+
+      const transportSuccess = new TrysteroTransport('pine-100', {
+        joinRoomFn: joinRoomSuccessFn as any,
+        turnUrl: 'http://localhost:8080/turn',
+      });
+      await transportSuccess.connect();
+
+      expect(joinRoomSuccessFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rtcConfig: expect.objectContaining({
+            iceServers: mockIceServers,
+          }),
+        }),
+        'pine-100'
+      );
+      transportSuccess.disconnect();
+
+      // 2. A 3 s timeout falls back to VITE_ICE_SERVERS_JSON
+      vi.useFakeTimers();
+
+      // Fetch that never resolves within 3 s
+      globalThis.fetch = vi.fn(() => new Promise<Response>(() => {}));
+
+      const mockTimeout = createMockRoom();
+      const joinRoomTimeoutFn = vi.fn(() => mockTimeout.room);
+
+      const transportTimeout = new TrysteroTransport('pine-100', {
+        joinRoomFn: joinRoomTimeoutFn as any,
+        turnUrl: 'http://localhost:8080/turn',
+        iceServersJson: JSON.stringify(fallbackServers),
+      });
+
+      const connectPromise = transportTimeout.connect();
+      await vi.advanceTimersByTimeAsync(3000);
+      await connectPromise;
+
+      expect(joinRoomTimeoutFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rtcConfig: expect.objectContaining({
+            iceServers: fallbackServers,
+          }),
+        }),
+        'pine-100'
+      );
+      transportTimeout.disconnect();
+
+      // Also test via import.meta.env
+      vi.stubEnv('VITE_TURN_URL', 'http://localhost:8080/turn');
+      vi.stubEnv('VITE_ICE_SERVERS_JSON', JSON.stringify(fallbackServers));
+
+      const mockEnvTimeout = createMockRoom();
+      const joinRoomEnvTimeoutFn = vi.fn(() => mockEnvTimeout.room);
+
+      const transportEnv = new TrysteroTransport('pine-100', {
+        joinRoomFn: joinRoomEnvTimeoutFn as any,
+      });
+
+      const connectEnvPromise = transportEnv.connect();
+      await vi.advanceTimersByTimeAsync(3000);
+      await connectEnvPromise;
+
+      expect(joinRoomEnvTimeoutFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rtcConfig: expect.objectContaining({
+            iceServers: fallbackServers,
+          }),
+        }),
+        'pine-100'
+      );
+      transportEnv.disconnect();
+    } finally {
+      vi.unstubAllEnvs();
+      globalThis.fetch = originalFetch;
+      vi.useRealTimers();
+    }
+  });
+
+  it('disconnecting during pending TURN fetch cancels joinRoomFn and leaves status disconnected', async () => {
+    const originalFetch = globalThis.fetch;
+    vi.useFakeTimers();
+
+    try {
+      // Fetch that never resolves
+      globalThis.fetch = vi.fn(() => new Promise<Response>(() => {}));
+
+      const mockRoom = createMockRoom();
+      const joinRoomFn = vi.fn(() => mockRoom.room);
+
+      const transport = new TrysteroTransport('pine-100', {
+        joinRoomFn: joinRoomFn as any,
+        turnUrl: 'http://localhost:8080/turn',
+      });
+
+      const connectPromise = transport.connect();
+      transport.disconnect();
+
+      await vi.advanceTimersByTimeAsync(3000);
+      await connectPromise;
+
+      expect(joinRoomFn).not.toHaveBeenCalled();
+
+      let currentStatus: string | null = null;
+      transport.onStatusChange((s) => {
+        currentStatus = s;
+      });
+      expect(currentStatus).toBe('disconnected');
+    } finally {
+      globalThis.fetch = originalFetch;
+      vi.useRealTimers();
+    }
+  });
+
+  it('concurrent connect() calls reuse the in-flight promise and join room only once', async () => {
+    const originalFetch = globalThis.fetch;
+    const mockIceServers = [{ urls: ['stun:stun.cloudflare.com:3478'] }];
+
+    try {
+      globalThis.fetch = vi.fn(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ iceServers: mockIceServers }),
+        } as Response;
+      });
+
+      const mockRoom = createMockRoom();
+      const joinRoomFn = vi.fn(() => mockRoom.room);
+
+      const transport = new TrysteroTransport('pine-100', {
+        joinRoomFn: joinRoomFn as any,
+        turnUrl: 'http://localhost:8080/turn',
+      });
+
+      const p1 = transport.connect();
+      const p2 = transport.connect();
+
+      expect(p1).toBe(p2);
+
+      await Promise.all([p1, p2]);
+      expect(joinRoomFn).toHaveBeenCalledTimes(1);
+      transport.disconnect();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('empty iceServers list from TURN endpoint falls back to VITE_ICE_SERVERS_JSON', async () => {
+    const originalFetch = globalThis.fetch;
+    const fallbackServers = [{ urls: ['stun:stun.fallback.com:3478'] }];
+
+    try {
+      globalThis.fetch = vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ iceServers: [] }),
+      } as Response));
+
+      const mockRoom = createMockRoom();
+      const joinRoomFn = vi.fn(() => mockRoom.room);
+
+      const transport = new TrysteroTransport('pine-100', {
+        joinRoomFn: joinRoomFn as any,
+        turnUrl: 'http://localhost:8080/turn',
+        iceServersJson: JSON.stringify(fallbackServers),
+      });
+
+      await transport.connect();
+
+      expect(joinRoomFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rtcConfig: expect.objectContaining({
+            iceServers: fallbackServers,
+          }),
+        }),
+        'pine-100'
+      );
+      transport.disconnect();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

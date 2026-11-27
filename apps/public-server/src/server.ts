@@ -30,6 +30,8 @@ export interface ServerConfig {
   pingIntervalMs: number;
   pongTimeoutMs: number;
   nameRng?: () => number;
+  turnKeyId?: string;
+  turnKeyApiToken?: string;
 }
 
 export interface ServerInstance {
@@ -119,6 +121,14 @@ export function resolveConfig(options?: Partial<ServerConfig>): ServerConfig {
     pingIntervalMs: options?.pingIntervalMs ?? 25000,
     pongTimeoutMs: options?.pongTimeoutMs ?? 60000,
     nameRng: options?.nameRng ?? Math.random,
+    turnKeyId:
+      options?.turnKeyId ??
+      (process.env.TURN_KEY_ID?.trim() ? process.env.TURN_KEY_ID.trim() : undefined),
+    turnKeyApiToken:
+      options?.turnKeyApiToken ??
+      (process.env.TURN_KEY_API_TOKEN?.trim()
+        ? process.env.TURN_KEY_API_TOKEN.trim()
+        : undefined),
   };
 }
 
@@ -132,6 +142,7 @@ export function createServer(options?: Partial<ServerConfig>) {
   const dirtyPlayers = new Map<string, PlayerNetState>();
   const leftPlayerIds = new Set<string>();
   const socketLastPong = new Map<WebSocket, number>();
+  const turnIpRequests = new Map<string, number[]>();
 
   function getActivePlayersState(): PlayerNetState[] {
     const list: PlayerNetState[] = [];
@@ -157,7 +168,12 @@ export function createServer(options?: Partial<ServerConfig>) {
       return;
     }
 
-    if (req.method === 'GET' && pathname === '/health') {
+    const cleanPath =
+      pathname.endsWith('/') && pathname.length > 1
+        ? pathname.slice(0, -1)
+        : pathname;
+
+    if (req.method === 'GET' && cleanPath === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(
         JSON.stringify({
@@ -167,6 +183,120 @@ export function createServer(options?: Partial<ServerConfig>) {
           uptimeSec: Math.floor((Date.now() - startTime) / 1000),
         })
       );
+      return;
+    }
+
+    if (cleanPath === '/turn') {
+      // 404 when env vars are unset
+      if (!config.turnKeyId || !config.turnKeyApiToken) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Not Found' }));
+        return;
+      }
+
+      // CORS only for ALLOWED_ORIGINS (all origins when it is empty)
+      // a disallowed Origin gets no CORS header
+      const originStr =
+        typeof req.headers.origin === 'string'
+          ? req.headers.origin.trim()
+          : undefined;
+
+      if (config.allowedOrigins.length === 0) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+      } else if (originStr && config.allowedOrigins.includes(originStr)) {
+        res.setHeader('Access-Control-Allow-Origin', originStr);
+        res.setHeader('Vary', 'Origin');
+      }
+
+      if (req.method === 'OPTIONS') {
+        if (res.hasHeader('Access-Control-Allow-Origin')) {
+          res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+          res.writeHead(204);
+          res.end();
+        } else {
+          res.writeHead(403);
+          res.end();
+        }
+        return;
+      }
+
+      if (req.method !== 'GET') {
+        res.writeHead(405, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+        return;
+      }
+
+      // 10 requests/min per client IP (same IP logic as the server, honoring TRUST_CF_HEADER)
+      const clientIp = getClientIp(req, config.trustCfHeader);
+      const now = Date.now();
+      let timestamps = turnIpRequests.get(clientIp);
+      if (timestamps) {
+        timestamps = timestamps.filter((t) => now - t < 60000);
+      } else {
+        timestamps = [];
+      }
+
+      if (timestamps.length >= 10) {
+        turnIpRequests.set(clientIp, timestamps);
+        res.writeHead(429, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Too Many Requests' }));
+        return;
+      }
+
+      timestamps.push(now);
+      turnIpRequests.set(clientIp, timestamps);
+
+      void (async () => {
+        try {
+          const cfUrl = `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(config.turnKeyId!)}/credentials/generate-ice-servers`;
+          const cfRes = await fetch(cfUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${config.turnKeyApiToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ttl: 3600 }),
+            signal: AbortSignal.timeout(5000),
+          });
+
+          if (!cfRes.ok) {
+            console.error(`[TURN] Cloudflare API error status: ${cfRes.status}`);
+            if (!res.headersSent) {
+              res.writeHead(502, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Failed to generate TURN credentials' }));
+            }
+            return;
+          }
+
+          const data = (await cfRes.json()) as any;
+          const iceServers = Array.isArray(data?.iceServers)
+            ? data.iceServers
+            : Array.isArray(data?.result?.iceServers)
+              ? data.result.iceServers
+              : [];
+
+          if (iceServers.length === 0) {
+            console.error('[TURN] Cloudflare returned empty iceServers list');
+            if (!res.headersSent) {
+              res.writeHead(502, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Failed to generate TURN credentials' }));
+            }
+            return;
+          }
+
+          if (!res.headersSent) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ iceServers }));
+          }
+        } catch {
+          console.error('[TURN] Failed to fetch TURN credentials from Cloudflare');
+          if (!res.headersSent) {
+            res.writeHead(502, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Failed to generate TURN credentials' }));
+          }
+        }
+      })();
       return;
     }
 
@@ -475,11 +605,22 @@ export function createServer(options?: Partial<ServerConfig>) {
         client.ping();
       }
     }
+
+    // Prune stale rate-limit entries
+    for (const [ip, timestamps] of turnIpRequests.entries()) {
+      const active = timestamps.filter((t) => now - t < 60000);
+      if (active.length === 0) {
+        turnIpRequests.delete(ip);
+      } else {
+        turnIpRequests.set(ip, active);
+      }
+    }
   }, config.pingIntervalMs);
 
   const cleanup = () => {
     clearInterval(broadcastTimer);
     clearInterval(heartbeatTimer);
+    turnIpRequests.clear();
     for (const client of wss.clients) {
       try {
         client.terminate();
