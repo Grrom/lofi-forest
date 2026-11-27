@@ -14,7 +14,8 @@
     "@lofi/shared": "workspace:*",
     "pixi.js": "^8.6.6",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "trystero": "^0.27.0"
   },
   "devDependencies": {
     "@testing-library/react": "^16.1.0",

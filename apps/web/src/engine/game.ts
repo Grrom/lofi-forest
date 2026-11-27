@@ -19,6 +19,7 @@ import type { AssetManifest, EmoteId, PomoBadge, ZoneId } from '@lofi/shared';
 import { parseSpectatorParams, type SpectatorParams } from '@lofi/shared';
 import { pomodoroController } from '../systems/PomodoroController';
 import { createTransport } from '../net/createTransport';
+import { LocalTransport } from '../net/LocalTransport';
 import type { TransportAdapter } from '../net/TransportAdapter';
 import { NetSync } from '../net/NetSync';
 import { generateStarterMap } from './starterMapData';
@@ -64,6 +65,7 @@ export class GameEngine {
   public player!: LocalPlayer;
   public fastTravelSystem!: FastTravelSystem;
   public transport?: TransportAdapter;
+  private pendingTransport?: TransportAdapter;
   public netSync?: NetSync;
   public isDebug = false;
 
@@ -183,7 +185,7 @@ export class GameEngine {
       this.netSync.destroy();
       this.netSync = undefined;
     }
-    if (this.transport) {
+    if (this.transport && this.transport !== this.pendingTransport) {
       this.transport.disconnect();
       this.transport = undefined;
     }
@@ -193,6 +195,10 @@ export class GameEngine {
     }
 
     if (this.isSpectator) {
+      if (this.pendingTransport) {
+        this.pendingTransport.disconnect();
+        this.pendingTransport = undefined;
+      }
       this.attachSpectatorHotkeys();
 
       // Audio: on load, call AudioEngine.unlockNow() (OBS allows autoplay)
@@ -258,7 +264,20 @@ export class GameEngine {
       });
 
       // Transport & NetSync setup
-      this.transport = createTransport();
+      if (this.pendingTransport) {
+        this.transport = this.pendingTransport;
+        this.pendingTransport = undefined;
+      } else {
+        const isLockedOnLoad =
+          typeof window !== 'undefined' &&
+          new URLSearchParams(window.location.search).get('locked') === '1';
+
+        if (isLockedOnLoad) {
+          this.transport = new LocalTransport();
+        } else {
+          this.transport = createTransport();
+        }
+      }
       await this.transport.connect();
       this.netSync = new NetSync(this.transport, this.player, {
         layers: this.layers,
@@ -491,6 +510,33 @@ export class GameEngine {
     return this.player?.triggerEmote(emoteId, now) ?? false;
   }
 
+  public async setTransport(transport: TransportAdapter): Promise<void> {
+    if (!this.player) {
+      if (this.pendingTransport && this.pendingTransport !== transport) {
+        this.pendingTransport.disconnect();
+      }
+      this.pendingTransport = transport;
+      await transport.connect();
+      return;
+    }
+    if (this.netSync) {
+      this.netSync.destroy();
+      this.netSync = undefined;
+    }
+    if (this.transport) {
+      this.transport.disconnect();
+    }
+    this.transport = transport;
+    await this.transport.connect();
+    if (this.player && this.layers) {
+      this.netSync = new NetSync(this.transport, this.player, {
+        layers: this.layers,
+        worldUiLayer: this.layers?.worldUiLayer,
+        entityLayer: this.layers?.entityLayer,
+      });
+    }
+  }
+
   public async connectPublicLobby(): Promise<void> {
     if (typeof window !== 'undefined' && window.location) {
       const url = new URL(window.location.href);
@@ -507,7 +553,6 @@ export class GameEngine {
 
     this.transport = createTransport('?room=public');
     await this.transport.connect();
-
     if (this.player && this.layers) {
       this.netSync = new NetSync(this.transport, this.player, {
         layers: this.layers,
@@ -534,6 +579,10 @@ export class GameEngine {
     if (this.updateIntervalId) {
       clearInterval(this.updateIntervalId);
       this.updateIntervalId = null;
+    }
+    if (this.pendingTransport) {
+      this.pendingTransport.disconnect();
+      this.pendingTransport = undefined;
     }
     this.netSync?.destroy();
     this.transport?.disconnect();

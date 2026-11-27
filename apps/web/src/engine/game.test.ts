@@ -103,4 +103,38 @@ describe('GameEngine setupSession', () => {
 
     engine.destroy();
   });
+
+  it('transport passed to setTransport before setupSession is the one NetSync ends up using', async () => {
+    const engine = new GameEngine();
+    const mockTransport: any = {
+      mode: 'p2p',
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+      sendLocalState: vi.fn(),
+      sendEmote: vi.fn(),
+      onPlayersChange: vi.fn(() => vi.fn()),
+      onEmote: vi.fn(() => vi.fn()),
+      onStatusChange: vi.fn(() => vi.fn()),
+    };
+
+    await engine.setTransport(mockTransport);
+
+    // Prior to setupSession, player is undefined, so transport is not yet set
+    expect(engine.transport).toBeUndefined();
+
+    await engine.setupSession({
+      spectator: false,
+      zone: 'forest',
+      hideNames: false,
+      overlay: false,
+      focusMin: 50,
+      breakMin: 10,
+    });
+
+    expect(engine.transport).toBe(mockTransport);
+    expect(engine.netSync?.transport).toBe(mockTransport);
+    expect(mockTransport.connect).toHaveBeenCalled();
+
+    engine.destroy();
+  });
 });

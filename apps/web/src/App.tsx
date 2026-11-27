@@ -20,6 +20,7 @@ import { WardrobePanel } from './ui/WardrobePanel';
 import { EmoteBar } from './components/EmoteBar';
 import { PomoCard } from './components/PomoCard';
 import { RosterPanel } from './components/RosterPanel';
+import { RoomControls } from './components/RoomControls';
 import { createTransport, parseRoomParam } from './net/createTransport';
 import type { TransportStatus } from './net/TransportAdapter';
 import { PUBLIC_ROOM_CODE } from '@lofi/shared';
@@ -356,6 +357,7 @@ export default function App({ search }: { search?: string } = {}) {
         >
           Wardrobe
         </button>
+        <RoomControls />
       </div>
 
       <MixerPanel />
